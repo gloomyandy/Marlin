@@ -260,6 +260,7 @@
 #include "duration_t.h"
 #include "types.h"
 #include "gcode.h"
+#include <float.h>
 
 #if HAS_ABL
   #include "vector_3.h"
@@ -2249,6 +2250,9 @@ static void clean_up_after_endstop_or_probe_move() {
 
     #if MULTIPLE_PROBING > 2
       float probes_total = 0;
+      float max_val = -FLT_MAX;
+      float min_val = FLT_MAX;
+      float val;
       for (uint8_t p = MULTIPLE_PROBING + 1; --p;) {
     #endif
 
@@ -2256,15 +2260,31 @@ static void clean_up_after_endstop_or_probe_move() {
         if (do_probe_move(-10, Z_PROBE_SPEED_SLOW)) return NAN;
 
     #if MULTIPLE_PROBING > 2
-        probes_total += current_position[Z_AXIS];
+        val = current_position[Z_AXIS];
+SERIAL_ECHOPGM("val = ");    SERIAL_PROTOCOL_F(val - 0.25, 7);SERIAL_ECHOLNPGM("");
+        probes_total += val;
+        if (val > max_val) max_val = val;
+        if (val < min_val) min_val = val;
+        //probes_total += current_position[Z_AXIS];
         if (p > 1) do_blocking_move_to_z(current_position[Z_AXIS] + Z_CLEARANCE_BETWEEN_PROBES, MMM_TO_MMS(Z_PROBE_SPEED_FAST));
       }
     #endif
 
     #if MULTIPLE_PROBING > 2
 
+    SERIAL_ECHOPGM("min/max/val/Avg = [");    
+    SERIAL_PROTOCOL_F(min_val - 0.25, 7);
+    SERIAL_ECHOPGM(", ");
+    SERIAL_PROTOCOL_F(max_val - 0.25, 7);
+    SERIAL_ECHOPGM(", ");
+    SERIAL_PROTOCOL_F(((probes_total - max_val - min_val) * (1.0 / ((MULTIPLE_PROBING) - 2))) - 0.25, 7);
+    SERIAL_ECHOPGM(", ");
+    SERIAL_PROTOCOL_F(((probes_total) * (1.0 / ((MULTIPLE_PROBING)))) - 0.25, 7);
+    SERIAL_ECHOLNPGM("]");
+
       // Return the average value of all probes
-      return probes_total * (1.0 / (MULTIPLE_PROBING));
+      return (probes_total - max_val - min_val) * (1.0 / ((MULTIPLE_PROBING) - 2));
+      //return probes_total * (1.0 / (MULTIPLE_PROBING));
 
     #elif MULTIPLE_PROBING == 2
 

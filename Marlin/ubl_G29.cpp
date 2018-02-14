@@ -394,6 +394,7 @@
           restore_ubl_active_state_and_leave();
         }
         else { // grid_size == 0 : A 3-Point leveling has been requested
+          float z1o, z2o, z3o;
           float z3, z2, z1 = probe_pt(UBL_PROBE_PT_1_X, UBL_PROBE_PT_1_Y, false, g29_verbose_level);
           if (!isnan(z1)) {
             z2 = probe_pt(UBL_PROBE_PT_2_X, UBL_PROBE_PT_2_Y, false, g29_verbose_level);
@@ -410,14 +411,38 @@
           // Adjust z1, z2, z3 by the Mesh Height at these points. Just because they're non-zero
           // doesn't mean the Mesh is tilted! (Compensate each probe point by what the Mesh says
           // its height is.)
-
+z1o = z1; z2o = z2; z3o = z3;
+        SERIAL_ECHOPGM("probe = [");
+        SERIAL_PROTOCOL_F(z1o, 7);
+        SERIAL_PROTOCOLCHAR(',');
+        SERIAL_PROTOCOL_F(z2o, 7);
+        SERIAL_PROTOCOLCHAR(',');
+        SERIAL_PROTOCOL_F(z3o, 7);
+        SERIAL_ECHOLNPGM("]");
           save_ubl_active_state_and_disable();
           z1 -= get_z_correction(UBL_PROBE_PT_1_X, UBL_PROBE_PT_1_Y) /* + zprobe_zoffset */ ;
           z2 -= get_z_correction(UBL_PROBE_PT_2_X, UBL_PROBE_PT_2_Y) /* + zprobe_zoffset */ ;
           z3 -= get_z_correction(UBL_PROBE_PT_3_X, UBL_PROBE_PT_3_Y) /* + zprobe_zoffset */ ;
+        SERIAL_ECHOPGM("corected probe = [");
+        SERIAL_PROTOCOL_F(z1, 7);
+        SERIAL_PROTOCOLCHAR(',');
+        SERIAL_PROTOCOL_F(z2, 7);
+        SERIAL_PROTOCOLCHAR(',');
+        SERIAL_PROTOCOL_F(z3, 7);
+        SERIAL_ECHOLNPGM("]");
 
           do_blocking_move_to_xy(0.5 * (MESH_MAX_X - (MESH_MIN_X)), 0.5 * (MESH_MAX_Y - (MESH_MIN_Y)));
           tilt_mesh_based_on_3pts(z1, z2, z3);
+          z1o -= get_z_correction(UBL_PROBE_PT_1_X, UBL_PROBE_PT_1_Y) /* + zprobe_zoffset */ ;
+          z2o -= get_z_correction(UBL_PROBE_PT_2_X, UBL_PROBE_PT_2_Y) /* + zprobe_zoffset */ ;
+          z3o -= get_z_correction(UBL_PROBE_PT_3_X, UBL_PROBE_PT_3_Y) /* + zprobe_zoffset */ ;
+        SERIAL_ECHOPGM("corected probe 2 = [");
+        SERIAL_PROTOCOL_F(z1o, 7);
+        SERIAL_PROTOCOLCHAR(',');
+        SERIAL_PROTOCOL_F(z2o, 7);
+        SERIAL_PROTOCOLCHAR(',');
+        SERIAL_PROTOCOL_F(z3o, 7);
+        SERIAL_ECHOLNPGM("]");
           restore_ubl_active_state_and_leave();
         }
       }
@@ -860,8 +885,8 @@
         SERIAL_ECHOLNPGM(" ");
       }
 
-      #if ENABLED(DEBUG_LEVELING_FEATURE)
-        if (DEBUGGING(LEVELING)) {
+      //#if ENABLED(DEBUG_LEVELING_FEATURE)
+        //if (DEBUGGING(LEVELING)) {
           SERIAL_ECHOPGM("d from 1st point: ");
           SERIAL_ECHO_F(d, 6);
           SERIAL_EOL();
@@ -875,8 +900,8 @@
           SERIAL_ECHOPGM("d from 3rd point: ");
           SERIAL_ECHO_F(d, 6);
           SERIAL_EOL();
-        }
-      #endif
+      //  }
+      //#endif
 
       for (uint8_t i = 0; i < GRID_MAX_POINTS_X; i++) {
         for (uint8_t j = 0; j < GRID_MAX_POINTS_Y; j++) {
@@ -908,7 +933,8 @@
               safe_delay(55);
             }
           #endif
-          z_values[i][j] += z_tmp - d;
+          //z_values[i][j] += z_tmp - d;
+          z_values[i][j] = z_tmp + d;
         }
       }
     }
