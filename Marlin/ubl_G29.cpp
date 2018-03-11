@@ -387,6 +387,7 @@
           restore_ubl_active_state_and_leave();
         }
         do_blocking_move_to_xy(0.5 * (MESH_MAX_X - (MESH_MIN_X)), 0.5 * (MESH_MAX_Y - (MESH_MIN_Y)));
+        report_current_position();
       }
 
     #endif // HAS_BED_PROBE
@@ -424,6 +425,8 @@
             }
             probe_entire_mesh(g29_x_pos + X_PROBE_OFFSET_FROM_EXTRUDER, g29_y_pos + Y_PROBE_OFFSET_FROM_EXTRUDER,
                               parser.seen('T'), parser.seen('E'), parser.seen('U'));
+
+            report_current_position();
             break;
 
         #endif // HAS_BED_PROBE
@@ -470,6 +473,8 @@
             manually_probe_remaining_mesh(g29_x_pos, g29_y_pos, height, g29_card_thickness, parser.seen('T'));
 
             SERIAL_PROTOCOLLNPGM("G29 P2 finished.");
+
+            report_current_position();
 
           #else
 
@@ -596,21 +601,8 @@
     if (parser.seen('S')) {     // Store (or Save) Current Mesh Data
       g29_storage_slot = parser.has_value() ? parser.value_int() : storage_slot;
 
-      if (g29_storage_slot == -1) {                     // Special case, we are going to 'Export' the mesh to the
-        SERIAL_ECHOLNPGM("G29 I 999");              // host in a form it can be reconstructed on a different machine
-        for (uint8_t x = 0; x < GRID_MAX_POINTS_X; x++)
-          for (uint8_t y = 0;  y < GRID_MAX_POINTS_Y; y++)
-            if (!isnan(z_values[x][y])) {
-              SERIAL_ECHOPAIR("M421 I ", x);
-              SERIAL_ECHOPAIR(" J ", y);
-              SERIAL_ECHOPGM(" Z ");
-              SERIAL_ECHO_F(z_values[x][y], 6);
-              SERIAL_ECHOPAIR(" ; X ", LOGICAL_X_POSITION(mesh_index_to_xpos(x)));
-              SERIAL_ECHOPAIR(", Y ", LOGICAL_Y_POSITION(mesh_index_to_ypos(y)));
-              SERIAL_EOL();
-            }
-        return;
-      }
+      if (g29_storage_slot == -1)                     // Special case, we are going to 'Export' the mesh to the
+        return report_current_mesh();
 
       int16_t a = settings.calc_num_meshes();
 
@@ -764,10 +756,11 @@
           z_values[location.x_index][location.y_index] = measured_z;
         }
         SERIAL_FLUSH(); // Prevent host M105 buffer overrun.
-
       } while (location.x_index >= 0 && --max_iterations);
 
       STOW_PROBE();
+      move_z_after_probing();
+
       restore_ubl_active_state_and_leave();
 
       do_blocking_move_to_xy(
@@ -785,6 +778,7 @@
       wait_for_release();
       while (!is_lcd_clicked()) {
         idle();
+        refresh_cmd_timeout();
         if (encoder_diff) {
           do_blocking_move_to_z(current_position[Z_AXIS] + float(encoder_diff) * multiplier);
           encoder_diff = 0;
@@ -1176,13 +1170,13 @@
 
     SERIAL_ECHO_START();
     SERIAL_ECHOLNPGM("EEPROM Dump:");
-    for (uint16_t i = 0; i < E2END + 1; i += 16) {
+    for (uint16_t i = 0; i <= E2END; i += 16) {
       if (!(i & 0x3)) idle();
       print_hex_word(i);
       SERIAL_ECHOPGM(": ");
       for (uint16_t j = 0; j < 16; j++) {
         kkkk = i + j;
-        eeprom_read_block(&cccc, (const void *) kkkk, sizeof(unsigned char));
+        eeprom_read_block(&cccc, (const void *)kkkk, sizeof(unsigned char));
         print_hex_byte(cccc);
         SERIAL_ECHO(' ');
       }
@@ -1678,7 +1672,7 @@
             }
           #endif
 
-          z_values[i][j] += z_tmp - lsf_results.D;
+          z_values[i][j] = z_tmp - lsf_results.D;
         }
       }
 

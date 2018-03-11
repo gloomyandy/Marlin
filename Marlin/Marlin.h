@@ -44,12 +44,6 @@
 #include "utility.h"
 #include "serial.h"
 
-#if ENABLED(PRINTCOUNTER)
-  #include "printcounter.h"
-#else
-  #include "stopwatch.h"
-#endif
-
 void idle(
   #if ENABLED(ADVANCED_PAUSE_FEATURE)
     bool no_stepper_sleep = false  // pass true to keep steppers from disabling on timeout
@@ -190,16 +184,12 @@ void sync_plan_position_e();
   #define SYNC_PLAN_POSITION_KINEMATIC() sync_plan_position()
 #endif
 
-void FlushSerialRequestResend();
+void flush_and_request_resend();
 void ok_to_send();
 
 void kill(const char*);
 
 void quickstop_stepper();
-
-#if ENABLED(FILAMENT_RUNOUT_SENSOR)
-  void handle_filament_runout();
-#endif
 
 extern uint8_t marlin_debug_flags;
 #define DEBUGGING(F) (marlin_debug_flags & (DEBUG_## F))
@@ -242,9 +232,15 @@ extern volatile bool wait_for_heatup;
   extern volatile bool wait_for_user;
 #endif
 
+#if HAS_AUTO_REPORTING
+  extern bool suspend_auto_report;
+#endif
+
 extern float current_position[XYZE], destination[XYZE];
 
-// Workspace offsets
+/**
+ * Workspace offsets
+ */
 #if HAS_WORKSPACE_OFFSET
   #if HAS_HOME_OFFSET
     extern float home_offset[XYZ];
@@ -252,36 +248,26 @@ extern float current_position[XYZE], destination[XYZE];
   #if HAS_POSITION_SHIFT
     extern float position_shift[XYZ];
   #endif
-#endif
-
-#if HAS_HOME_OFFSET && HAS_POSITION_SHIFT
-  extern float workspace_offset[XYZ];
-  #define WORKSPACE_OFFSET(AXIS) workspace_offset[AXIS]
-#elif HAS_HOME_OFFSET
-  #define WORKSPACE_OFFSET(AXIS) home_offset[AXIS]
-#elif HAS_POSITION_SHIFT
-  #define WORKSPACE_OFFSET(AXIS) position_shift[AXIS]
+  #if HAS_HOME_OFFSET && HAS_POSITION_SHIFT
+    extern float workspace_offset[XYZ];
+    #define WORKSPACE_OFFSET(AXIS) workspace_offset[AXIS]
+  #elif HAS_HOME_OFFSET
+    #define WORKSPACE_OFFSET(AXIS) home_offset[AXIS]
+  #elif HAS_POSITION_SHIFT
+    #define WORKSPACE_OFFSET(AXIS) position_shift[AXIS]
+  #endif
+  #define NATIVE_TO_LOGICAL(POS, AXIS) ((POS) + WORKSPACE_OFFSET(AXIS))
+  #define LOGICAL_TO_NATIVE(POS, AXIS) ((POS) - WORKSPACE_OFFSET(AXIS))
 #else
-  #define WORKSPACE_OFFSET(AXIS) 0
+  #define NATIVE_TO_LOGICAL(POS, AXIS) (POS)
+  #define LOGICAL_TO_NATIVE(POS, AXIS) (POS)
 #endif
-
-#define NATIVE_TO_LOGICAL(POS, AXIS) ((POS) + WORKSPACE_OFFSET(AXIS))
-#define LOGICAL_TO_NATIVE(POS, AXIS) ((POS) - WORKSPACE_OFFSET(AXIS))
-
-#if HAS_POSITION_SHIFT || DISABLED(DELTA)
-  #define LOGICAL_X_POSITION(POS)   NATIVE_TO_LOGICAL(POS, X_AXIS)
-  #define LOGICAL_Y_POSITION(POS)   NATIVE_TO_LOGICAL(POS, Y_AXIS)
-  #define RAW_X_POSITION(POS)       LOGICAL_TO_NATIVE(POS, X_AXIS)
-  #define RAW_Y_POSITION(POS)       LOGICAL_TO_NATIVE(POS, Y_AXIS)
-#else
-  #define LOGICAL_X_POSITION(POS)   (POS)
-  #define LOGICAL_Y_POSITION(POS)   (POS)
-  #define RAW_X_POSITION(POS)       (POS)
-  #define RAW_Y_POSITION(POS)       (POS)
-#endif
-
-#define LOGICAL_Z_POSITION(POS)     NATIVE_TO_LOGICAL(POS, Z_AXIS)
-#define RAW_Z_POSITION(POS)         LOGICAL_TO_NATIVE(POS, Z_AXIS)
+#define LOGICAL_X_POSITION(POS) NATIVE_TO_LOGICAL(POS, X_AXIS)
+#define LOGICAL_Y_POSITION(POS) NATIVE_TO_LOGICAL(POS, Y_AXIS)
+#define LOGICAL_Z_POSITION(POS) NATIVE_TO_LOGICAL(POS, Z_AXIS)
+#define RAW_X_POSITION(POS)     LOGICAL_TO_NATIVE(POS, X_AXIS)
+#define RAW_Y_POSITION(POS)     LOGICAL_TO_NATIVE(POS, Y_AXIS)
+#define RAW_Z_POSITION(POS)     LOGICAL_TO_NATIVE(POS, Z_AXIS)
 
 // Hotend Offsets
 #if HOTENDS > 1
@@ -400,19 +386,14 @@ void report_current_position();
   void set_z_fade_height(const float zfh, const bool do_report=true);
 #endif
 
-#if ENABLED(X_DUAL_ENDSTOPS)
-  extern float x_endstop_adj;
-#endif
-#if ENABLED(Y_DUAL_ENDSTOPS)
-  extern float y_endstop_adj;
-#endif
-#if ENABLED(Z_DUAL_ENDSTOPS)
-  extern float z_endstop_adj;
-#endif
-
 #if HAS_BED_PROBE
   extern float zprobe_zoffset;
   bool set_probe_deployed(const bool deploy);
+  #ifdef Z_AFTER_PROBING
+    void move_z_after_probing();
+  #else
+    inline void move_z_after_probing() {}
+  #endif
   #define DEPLOY_PROBE() set_probe_deployed(true)
   #define STOW_PROBE() set_probe_deployed(false)
 #else
@@ -457,6 +438,7 @@ void report_current_position();
 #endif
 
 #if ENABLED(ADVANCED_PAUSE_FEATURE)
+  extern int8_t did_pause_print;
   extern AdvancedPauseMenuResponse advanced_pause_menu_response;
   extern float filament_change_unload_length[EXTRUDERS],
                filament_change_load_length[EXTRUDERS];
@@ -466,11 +448,10 @@ void report_current_position();
   extern int lpq_len;
 #endif
 
-// Print job timer
-#if ENABLED(PRINTCOUNTER)
-  extern PrintCounter print_job_timer;
-#else
-  extern Stopwatch print_job_timer;
+#if HAS_POWER_SWITCH
+  extern bool powersupply_on;
+  #define PSU_PIN_ON()  do{ OUT_WRITE(PS_ON_PIN, PS_ON_AWAKE); powersupply_on = true; }while(0)
+  #define PSU_PIN_OFF() do{ OUT_WRITE(PS_ON_PIN, PS_ON_ASLEEP); powersupply_on = false; }while(0)
 #endif
 
 // Handling multiple extruders pins
@@ -517,6 +498,7 @@ void do_blocking_move_to_xy(const float &x, const float &y, const float &fr_mm_s
     extern const float L1, L2;
   #endif
 
+  // Return true if the given point is within the printable area
   inline bool position_is_reachable(const float &rx, const float &ry) {
     #if ENABLED(DELTA)
       return HYPOT2(rx, ry) <= sq(DELTA_PRINTABLE_RADIUS);
@@ -532,27 +514,35 @@ void do_blocking_move_to_xy(const float &x, const float &y, const float &fr_mm_s
     #endif
   }
 
+  // Return true if the both nozzle and the probe can reach the given point.
+  // Note: This won't work on SCARA since the probe offset rotates with the arm.
   inline bool position_is_reachable_by_probe(const float &rx, const float &ry) {
-
-    // Both the nozzle and the probe must be able to reach the point.
-    // This won't work on SCARA since the probe offset rotates with the arm.
-
     return position_is_reachable(rx, ry)
         && position_is_reachable(rx - (X_PROBE_OFFSET_FROM_EXTRUDER), ry - (Y_PROBE_OFFSET_FROM_EXTRUDER));
   }
 
 #else // CARTESIAN
 
+   // Return true if the given position is within the machine bounds.
   inline bool position_is_reachable(const float &rx, const float &ry) {
-      // Add 0.001 margin to deal with float imprecision
-      return WITHIN(rx, X_MIN_POS - 0.001, X_MAX_POS + 0.001)
-          && WITHIN(ry, Y_MIN_POS - 0.001, Y_MAX_POS + 0.001);
+    // Add 0.001 margin to deal with float imprecision
+    return WITHIN(rx, X_MIN_POS - 0.001, X_MAX_POS + 0.001)
+        && WITHIN(ry, Y_MIN_POS - 0.001, Y_MAX_POS + 0.001);
   }
 
+  /**
+   * Return whether the given position is within the bed, and whether the nozzle
+   * can reach the position required to put the probe at the given position.
+   *
+   * Example: For a probe offset of -10,+10, then for the probe to reach 0,0 the
+   *          nozzle must be be able to reach +10,-10.
+   */
   inline bool position_is_reachable_by_probe(const float &rx, const float &ry) {
-      // Add 0.001 margin to deal with float imprecision
-      return WITHIN(rx, MIN_PROBE_X - 0.001, MAX_PROBE_X + 0.001)
-          && WITHIN(ry, MIN_PROBE_Y - 0.001, MAX_PROBE_Y + 0.001);
+    const float nx = rx - (X_PROBE_OFFSET_FROM_EXTRUDER),
+                ny = ry - (Y_PROBE_OFFSET_FROM_EXTRUDER);
+    return position_is_reachable(nx, ny)
+        && WITHIN(rx, X_MIN_BED - 0.001, X_MAX_BED + 0.001)
+        && WITHIN(ry, Y_MIN_BED - 0.001, Y_MAX_BED + 0.001);
   }
 
 #endif // CARTESIAN

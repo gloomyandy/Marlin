@@ -37,7 +37,7 @@
  */
 
 // Change EEPROM version if the structure changes
-#define EEPROM_VERSION "V51"
+#define EEPROM_VERSION "V52"
 #define EEPROM_OFFSET 100
 
 // Check the integrity of data offsets.
@@ -221,8 +221,7 @@ typedef struct SettingsDataStruct {
   //
   // LIN_ADVANCE
   //
-  float planner_extruder_advance_k,                     // M900 K    planner.extruder_advance_k
-        planner_advance_ed_ratio;                       // M900 WHD  planner.advance_ed_ratio
+  float planner_extruder_advance_K;                     // M900 K    planner.extruder_advance_K
 
   //
   // HAS_MOTOR_CURRENT_PWM
@@ -547,19 +546,19 @@ void MarlinSettings::postprocess() {
       // Write dual endstops in X, Y, Z order. Unused = 0.0
       dummy = 0.0f;
       #if ENABLED(X_DUAL_ENDSTOPS)
-        EEPROM_WRITE(x_endstop_adj);             // 1 float
+        EEPROM_WRITE(endstops.x_endstop_adj);   // 1 float
       #else
         EEPROM_WRITE(dummy);
       #endif
 
       #if ENABLED(Y_DUAL_ENDSTOPS)
-        EEPROM_WRITE(y_endstop_adj);             // 1 float
+        EEPROM_WRITE(endstops.y_endstop_adj);   // 1 float
       #else
         EEPROM_WRITE(dummy);
       #endif
 
       #if ENABLED(Z_DUAL_ENDSTOPS)
-        EEPROM_WRITE(z_endstop_adj);             // 1 float
+        EEPROM_WRITE(endstops.z_endstop_adj);   // 1 float
       #else
         EEPROM_WRITE(dummy);
       #endif
@@ -569,9 +568,9 @@ void MarlinSettings::postprocess() {
     _FIELD_TEST(lcd_preheat_hotend_temp);
 
     #if DISABLED(ULTIPANEL)
-      constexpr int lcd_preheat_hotend_temp[2] = { PREHEAT_1_TEMP_HOTEND, PREHEAT_2_TEMP_HOTEND },
-                    lcd_preheat_bed_temp[2] = { PREHEAT_1_TEMP_BED, PREHEAT_2_TEMP_BED },
-                    lcd_preheat_fan_speed[2] = { PREHEAT_1_FAN_SPEED, PREHEAT_2_FAN_SPEED };
+      constexpr int16_t lcd_preheat_hotend_temp[2] = { PREHEAT_1_TEMP_HOTEND, PREHEAT_2_TEMP_HOTEND },
+                        lcd_preheat_bed_temp[2] = { PREHEAT_1_TEMP_BED, PREHEAT_2_TEMP_BED },
+                        lcd_preheat_fan_speed[2] = { PREHEAT_1_FAN_SPEED, PREHEAT_2_FAN_SPEED };
     #endif
 
     EEPROM_WRITE(lcd_preheat_hotend_temp);
@@ -767,23 +766,21 @@ void MarlinSettings::postprocess() {
     // Linear Advance
     //
 
-    _FIELD_TEST(planner_extruder_advance_k);
+    _FIELD_TEST(planner_extruder_advance_K);
 
     #if ENABLED(LIN_ADVANCE)
-      EEPROM_WRITE(planner.extruder_advance_k);
-      EEPROM_WRITE(planner.advance_ed_ratio);
+      EEPROM_WRITE(planner.extruder_advance_K);
     #else
       dummy = 0.0f;
-      EEPROM_WRITE(dummy);
       EEPROM_WRITE(dummy);
     #endif
 
     _FIELD_TEST(motor_current_setting);
 
     #if HAS_MOTOR_CURRENT_PWM
-      for (uint8_t q = 3; q--;) EEPROM_WRITE(stepper.motor_current_setting[q]);
+      for (uint8_t q = XYZ; q--;) EEPROM_WRITE(stepper.motor_current_setting[q]);
     #else
-      const uint32_t dummyui32[3] = { 0 };
+      const uint32_t dummyui32[XYZ] = { 0 };
       EEPROM_WRITE(dummyui32);
     #endif
 
@@ -1073,17 +1070,17 @@ void MarlinSettings::postprocess() {
         _FIELD_TEST(x_endstop_adj);
 
         #if ENABLED(X_DUAL_ENDSTOPS)
-          EEPROM_READ(x_endstop_adj);             // 1 float
+          EEPROM_READ(endstops.x_endstop_adj);  // 1 float
         #else
           EEPROM_READ(dummy);
         #endif
         #if ENABLED(Y_DUAL_ENDSTOPS)
-          EEPROM_READ(y_endstop_adj);             // 1 float
+          EEPROM_READ(endstops.y_endstop_adj);  // 1 float
         #else
           EEPROM_READ(dummy);
         #endif
         #if ENABLED(Z_DUAL_ENDSTOPS)
-          EEPROM_READ(z_endstop_adj);             // 1 float
+          EEPROM_READ(endstops.z_endstop_adj); // 1 float
         #else
           EEPROM_READ(dummy);
         #endif
@@ -1097,7 +1094,7 @@ void MarlinSettings::postprocess() {
       _FIELD_TEST(lcd_preheat_hotend_temp);
 
       #if DISABLED(ULTIPANEL)
-        int lcd_preheat_hotend_temp[2], lcd_preheat_bed_temp[2], lcd_preheat_fan_speed[2];
+        int16_t lcd_preheat_hotend_temp[2], lcd_preheat_bed_temp[2], lcd_preheat_fan_speed[2];
       #endif
       EEPROM_READ(lcd_preheat_hotend_temp); // 2 floats
       EEPROM_READ(lcd_preheat_bed_temp);    // 2 floats
@@ -1305,13 +1302,11 @@ void MarlinSettings::postprocess() {
       // Linear Advance
       //
 
-      _FIELD_TEST(planner_extruder_advance_k);
+      _FIELD_TEST(planner_extruder_advance_K);
 
       #if ENABLED(LIN_ADVANCE)
-        EEPROM_READ(planner.extruder_advance_k);
-        EEPROM_READ(planner.advance_ed_ratio);
+        EEPROM_READ(planner.extruder_advance_K);
       #else
-        EEPROM_READ(dummy);
         EEPROM_READ(dummy);
       #endif
 
@@ -1322,9 +1317,9 @@ void MarlinSettings::postprocess() {
       _FIELD_TEST(motor_current_setting);
 
       #if HAS_MOTOR_CURRENT_PWM
-        for (uint8_t q = 3; q--;) EEPROM_READ(stepper.motor_current_setting[q]);
+        for (uint8_t q = XYZ; q--;) EEPROM_READ(stepper.motor_current_setting[q]);
       #else
-        uint32_t dummyui32[3];
+        uint32_t dummyui32[XYZ];
         EEPROM_READ(dummyui32);
       #endif
 
@@ -1487,6 +1482,10 @@ void MarlinSettings::postprocess() {
       return (meshes_end - meshes_start_index()) / sizeof(ubl.z_values);
     }
 
+    int MarlinSettings::mesh_slot_offset(const int8_t slot) {
+      return meshes_end - (slot + 1) * sizeof(ubl.z_values);
+    }
+
     void MarlinSettings::store_mesh(const int8_t slot) {
 
       #if ENABLED(AUTO_BED_LEVELING_UBL)
@@ -1502,9 +1501,8 @@ void MarlinSettings::postprocess() {
           return;
         }
 
+        int pos = mesh_slot_offset(slot);
         uint16_t crc = 0;
-        int pos = meshes_end - (slot + 1) * sizeof(ubl.z_values);
-
         write_data(pos, (uint8_t *)&ubl.z_values, sizeof(ubl.z_values), &crc);
 
         // Write crc to MAT along with other data, or just tack on to the beginning or end
@@ -1533,8 +1531,8 @@ void MarlinSettings::postprocess() {
           return;
         }
 
+        int pos = mesh_slot_offset(slot);
         uint16_t crc = 0;
-        int pos = meshes_end - (slot + 1) * sizeof(ubl.z_values);
         uint8_t * const dest = into ? (uint8_t*)into : (uint8_t*)&ubl.z_values;
         read_data(pos, dest, sizeof(ubl.z_values), &crc);
 
@@ -1640,7 +1638,7 @@ void MarlinSettings::reset() {
   #elif ENABLED(X_DUAL_ENDSTOPS) || ENABLED(Y_DUAL_ENDSTOPS) || ENABLED(Z_DUAL_ENDSTOPS)
 
     #if ENABLED(X_DUAL_ENDSTOPS)
-      x_endstop_adj = (
+      endstops.x_endstop_adj = (
         #ifdef X_DUAL_ENDSTOPS_ADJUSTMENT
           X_DUAL_ENDSTOPS_ADJUSTMENT
         #else
@@ -1649,7 +1647,7 @@ void MarlinSettings::reset() {
       );
     #endif
     #if ENABLED(Y_DUAL_ENDSTOPS)
-      y_endstop_adj = (
+      endstops.y_endstop_adj = (
         #ifdef Y_DUAL_ENDSTOPS_ADJUSTMENT
           Y_DUAL_ENDSTOPS_ADJUSTMENT
         #else
@@ -1658,7 +1656,7 @@ void MarlinSettings::reset() {
       );
     #endif
     #if ENABLED(Z_DUAL_ENDSTOPS)
-      z_endstop_adj = (
+      endstops.z_endstop_adj = (
         #ifdef Z_DUAL_ENDSTOPS_ADJUSTMENT
           Z_DUAL_ENDSTOPS_ADJUSTMENT
         #else
@@ -1793,8 +1791,7 @@ void MarlinSettings::reset() {
   #endif
 
   #if ENABLED(LIN_ADVANCE)
-    planner.extruder_advance_k = LIN_ADVANCE_K;
-    planner.advance_ed_ratio = LIN_ADVANCE_E_D_RATIO;
+    planner.extruder_advance_K = LIN_ADVANCE_K;
   #endif
 
   #if HAS_MOTOR_CURRENT_PWM
@@ -2067,14 +2064,16 @@ void MarlinSettings::reset() {
 
       #if ENABLED(MESH_BED_LEVELING)
 
-        for (uint8_t py = 0; py < GRID_MAX_POINTS_Y; py++) {
-          for (uint8_t px = 0; px < GRID_MAX_POINTS_X; px++) {
-            CONFIG_ECHO_START;
-            SERIAL_ECHOPAIR("  G29 S3 X", (int)px + 1);
-            SERIAL_ECHOPAIR(" Y", (int)py + 1);
-            SERIAL_ECHOPGM(" Z");
-            SERIAL_PROTOCOL_F(LINEAR_UNIT(mbl.z_values[px][py]), 5);
-            SERIAL_EOL();
+        if (leveling_is_valid()) {
+          for (uint8_t py = 0; py < GRID_MAX_POINTS_Y; py++) {
+            for (uint8_t px = 0; px < GRID_MAX_POINTS_X; px++) {
+              CONFIG_ECHO_START;
+              SERIAL_ECHOPAIR("  G29 S3 X", (int)px + 1);
+              SERIAL_ECHOPAIR(" Y", (int)py + 1);
+              SERIAL_ECHOPGM(" Z");
+              SERIAL_PROTOCOL_F(LINEAR_UNIT(mbl.z_values[px][py]), 5);
+              SERIAL_EOL();
+            }
           }
         }
 
@@ -2086,6 +2085,23 @@ void MarlinSettings::reset() {
           SERIAL_ECHOLNPAIR("\nActive Mesh Slot: ", ubl.storage_slot);
           SERIAL_ECHOPAIR("EEPROM can hold ", calc_num_meshes());
           SERIAL_ECHOLNPGM(" meshes.\n");
+        }
+
+        ubl.report_current_mesh();
+
+      #elif ENABLED(AUTO_BED_LEVELING_BILINEAR)
+
+        if (leveling_is_valid()) {
+          for (uint8_t py = 0; py < GRID_MAX_POINTS_Y; py++) {
+            for (uint8_t px = 0; px < GRID_MAX_POINTS_X; px++) {
+              CONFIG_ECHO_START;
+              SERIAL_ECHOPAIR("  G29 W I", (int)px + 1);
+              SERIAL_ECHOPAIR(" J", (int)py + 1);
+              SERIAL_ECHOPGM(" Z");
+              SERIAL_PROTOCOL_F(LINEAR_UNIT(z_values[px][py]), 5);
+              SERIAL_EOL();
+            }
+          }
         }
 
       #endif
@@ -2124,13 +2140,13 @@ void MarlinSettings::reset() {
       CONFIG_ECHO_START;
       SERIAL_ECHOPGM("  M666");
       #if ENABLED(X_DUAL_ENDSTOPS)
-        SERIAL_ECHOPAIR(" X", LINEAR_UNIT(x_endstop_adj));
+        SERIAL_ECHOPAIR(" X", LINEAR_UNIT(endstops.x_endstop_adj));
       #endif
       #if ENABLED(Y_DUAL_ENDSTOPS)
-        SERIAL_ECHOPAIR(" Y", LINEAR_UNIT(y_endstop_adj));
+        SERIAL_ECHOPAIR(" Y", LINEAR_UNIT(endstops.y_endstop_adj));
       #endif
       #if ENABLED(Z_DUAL_ENDSTOPS)
-        SERIAL_ECHOPAIR(" Z", LINEAR_UNIT(z_endstop_adj));
+        SERIAL_ECHOPAIR(" Z", LINEAR_UNIT(endstops.z_endstop_adj));
       #endif
       SERIAL_EOL();
     #endif // DELTA
@@ -2364,8 +2380,7 @@ void MarlinSettings::reset() {
         SERIAL_ECHOLNPGM("Linear Advance:");
       }
       CONFIG_ECHO_START;
-      SERIAL_ECHOPAIR("  M900 K", planner.extruder_advance_k);
-      SERIAL_ECHOLNPAIR(" R", planner.advance_ed_ratio);
+      SERIAL_ECHOLNPAIR("  M900 K", planner.extruder_advance_K);
     #endif
 
     #if HAS_MOTOR_CURRENT_PWM

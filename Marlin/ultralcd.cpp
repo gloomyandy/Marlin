@@ -39,8 +39,9 @@
   #include "buzzer.h"
 #endif
 
+#include "printcounter.h"
+
 #if ENABLED(PRINTCOUNTER)
-  #include "printcounter.h"
   #include "duration_t.h"
 #endif
 
@@ -84,7 +85,11 @@ uint8_t lcd_status_update_delay = 1, // First update one loop delayed
         lcd_status_message_level;    // Higher level blocks lower level
 
 #if ENABLED(STATUS_MESSAGE_SCROLLING)
-  #define MAX_MESSAGE_LENGTH max(CHARSIZE * 2 * (LCD_WIDTH), LONG_FILENAME_LENGTH)
+  #if LONG_FILENAME_LENGTH > CHARSIZE * 2 * (LCD_WIDTH)
+    #define MAX_MESSAGE_LENGTH LONG_FILENAME_LENGTH
+  #else
+    #define MAX_MESSAGE_LENGTH CHARSIZE * 2 * (LCD_WIDTH)
+  #endif
   uint8_t status_scroll_pos = 0;
 #else
   #define MAX_MESSAGE_LENGTH CHARSIZE * (LCD_WIDTH)
@@ -146,7 +151,10 @@ uint8_t lcdDrawUpdate = LCDVIEW_CLEAR_CALL_REDRAW; // Set when the LCD needs to 
 uint16_t max_display_update_time = 0;
 
 #if ENABLED(DOGLCD)
-  bool drawing_screen = false;
+  bool drawing_screen, // = false
+       first_page;
+#else
+  constexpr bool first_page = true;
 #endif
 
 #if ENABLED(DAC_STEPPER_CURRENT)
@@ -165,6 +173,7 @@ uint16_t max_display_update_time = 0;
   #endif
 
   bool no_reentry = false;
+  constexpr int8_t menu_bottom = LCD_HEIGHT - (TALL_FONT_CORRECTION);
 
   ////////////////////////////////////////////
   ///////////////// Menu Tree ////////////////
@@ -230,6 +239,11 @@ uint16_t max_display_update_time = 0;
 
   #if ENABLED(DELTA_CALIBRATION_MENU) || ENABLED(DELTA_AUTO_CALIBRATION)
     void lcd_delta_calibrate_menu();
+  #endif
+
+  #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+    static float new_z_fade_height;
+    void _lcd_set_z_fade_height() { set_z_fade_height(new_z_fade_height); }
   #endif
 
   ////////////////////////////////////////////
@@ -369,30 +383,9 @@ uint16_t max_display_update_time = 0;
     #define MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(TYPE, LABEL, ...) MENU_ITEM(setting_edit_callback_ ## TYPE, LABEL, PSTR(LABEL), ## __VA_ARGS__)
   #endif // !ENCODER_RATE_MULTIPLIER
 
-  /**
-   * START_SCREEN_OR_MENU generates init code for a screen or menu
-   *
-   *   encoderLine is the position based on the encoder
-   *   encoderTopLine is the top menu line to display
-   *   _lcdLineNr is the index of the LCD line (e.g., 0-3)
-   *   _menuLineNr is the menu item to draw and process
-   *   _thisItemNr is the index of each MENU_ITEM or STATIC_ITEM
-   *   _countedItems is the total number of items in the menu (after one call)
-   */
-  #define START_SCREEN_OR_MENU(LIMIT) \
-    ENCODER_DIRECTION_MENUS(); \
-    ENCODER_RATE_MULTIPLY(false); \
-    if (encoderPosition > 0x8000) encoderPosition = 0; \
-    static int8_t _countedItems = 0; \
-    int8_t encoderLine = encoderPosition / (ENCODER_STEPS_PER_MENU_ITEM); \
-    if (_countedItems > 0 && encoderLine >= _countedItems - (LIMIT)) { \
-      encoderLine = max(0, _countedItems - (LIMIT)); \
-      encoderPosition = encoderLine * (ENCODER_STEPS_PER_MENU_ITEM); \
-    }
-
   #define SCREEN_OR_MENU_LOOP() \
     int8_t _menuLineNr = encoderTopLine, _thisItemNr; \
-    for (int8_t _lcdLineNr = 0; _lcdLineNr < LCD_HEIGHT - (TALL_FONT_CORRECTION); _lcdLineNr++, _menuLineNr++) { \
+    for (int8_t _lcdLineNr = 0; _lcdLineNr < menu_bottom; _lcdLineNr++, _menuLineNr++) { \
       _thisItemNr = 0
 
   /**
@@ -403,28 +396,22 @@ uint16_t max_display_update_time = 0;
    *               Scroll as-needed to keep the selected line in view.
    */
   #define START_SCREEN() \
-    START_SCREEN_OR_MENU(LCD_HEIGHT - (TALL_FONT_CORRECTION)); \
-    encoderTopLine = encoderLine; \
+    scroll_screen(menu_bottom, false); \
     bool _skipStatic = false; \
     SCREEN_OR_MENU_LOOP()
 
   #define START_MENU() \
-    START_SCREEN_OR_MENU(1); \
-    screen_changed = false; \
-    NOMORE(encoderTopLine, encoderLine); \
-    if (encoderLine >= encoderTopLine + LCD_HEIGHT - (TALL_FONT_CORRECTION)) { \
-      encoderTopLine = encoderLine - (LCD_HEIGHT - (TALL_FONT_CORRECTION) - 1); \
-    } \
+    scroll_screen(1, true); \
     bool _skipStatic = true; \
     SCREEN_OR_MENU_LOOP()
 
   #define END_SCREEN() \
     } \
-    _countedItems = _thisItemNr
+    screen_items = _thisItemNr
 
   #define END_MENU() \
     } \
-    _countedItems = _thisItemNr; \
+    screen_items = _thisItemNr; \
     UNUSED(_skipStatic)
 
   ////////////////////////////////////////////
@@ -626,6 +613,38 @@ uint16_t max_display_update_time = 0;
     lcd_goto_previous_menu();
   }
 
+  /**
+   * Scrolling for menus and other line-based screens
+   *
+   *   encoderLine is the position based on the encoder
+   *   encoderTopLine is the top menu line to display
+   *   _lcdLineNr is the index of the LCD line (e.g., 0-3)
+   *   _menuLineNr is the menu item to draw and process
+   *   _thisItemNr is the index of each MENU_ITEM or STATIC_ITEM
+   *   screen_items is the total number of items in the menu (after one call)
+   */
+  int8_t encoderLine, screen_items;
+  void scroll_screen(const uint8_t limit, const bool is_menu) {
+    ENCODER_DIRECTION_MENUS();
+    ENCODER_RATE_MULTIPLY(false);
+    if (encoderPosition > 0x8000) encoderPosition = 0;
+    if (first_page) {
+      encoderLine = encoderPosition / (ENCODER_STEPS_PER_MENU_ITEM);
+      screen_changed = false;
+    }
+    if (screen_items > 0 && encoderLine >= screen_items - limit) {
+      encoderLine = max(0, screen_items - limit);
+      encoderPosition = encoderLine * (ENCODER_STEPS_PER_MENU_ITEM);
+    }
+    if (is_menu) {
+      NOMORE(encoderTopLine, encoderLine);
+      if (encoderLine >= encoderTopLine + menu_bottom)
+        encoderTopLine = encoderLine - menu_bottom + 1;
+    }
+    else
+      encoderTopLine = encoderLine;
+  }
+
 #endif // ULTIPANEL
 
 /**
@@ -642,6 +661,12 @@ void lcd_status_screen() {
     ENCODER_RATE_MULTIPLY(false);
   #endif
 
+  #if ENABLED(LCD_SET_PROGRESS_MANUALLY) && ENABLED(SDSUPPORT) && (ENABLED(LCD_PROGRESS_BAR) || ENABLED(DOGLCD))
+    // Progress bar % comes from SD when actively printing
+    if (IS_SD_PRINTING)
+      progress_bar_percent = card.percentDone();
+  #endif
+
   #if ENABLED(LCD_PROGRESS_BAR)
 
     //
@@ -649,12 +674,6 @@ void lcd_status_screen() {
     // message expiration because Status Line and Progress Bar
     // share the same line on the display.
     //
-
-    // Set current percentage from SD when actively printing
-    #if ENABLED(LCD_SET_PROGRESS_MANUALLY)
-      if (IS_SD_PRINTING)
-        progress_bar_percent = card.percentDone();
-    #endif
 
     millis_t ms = millis();
 
@@ -819,7 +838,11 @@ void kill_screen(const char* lcd_msg) {
     }
 
     void lcd_sdcard_stop() {
-      card.stopSDPrint();
+      card.stopSDPrint(
+        #if SD_RESORT
+          true
+        #endif
+      );
       clear_command_queue();
       quickstop_stepper();
       print_job_timer.stop();
@@ -978,6 +1001,13 @@ void kill_screen(const char* lcd_msg) {
    *
    */
 
+  #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+    void _lcd_goto_tune_menu() {
+      lcd_goto_screen(lcd_tune_menu);
+      new_z_fade_height = planner.z_fade_height;
+    }
+  #endif
+
   void lcd_main_menu() {
     START_MENU();
     MENU_BACK(MSG_WATCH);
@@ -1005,7 +1035,13 @@ void kill_screen(const char* lcd_msg) {
     #endif
 
     if (planner.movesplanned() || IS_SD_PRINTING) {
-      MENU_ITEM(submenu, MSG_TUNE, lcd_tune_menu);
+      MENU_ITEM(submenu, MSG_TUNE,
+        #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+          _lcd_goto_tune_menu
+        #else
+          lcd_tune_menu
+        #endif
+      );
     }
     else {
       MENU_ITEM(submenu, MSG_PREPARE, lcd_prepare_menu);
@@ -1298,7 +1334,9 @@ void kill_screen(const char* lcd_msg) {
     #if ENABLED(MESH_BED_LEVELING) && ENABLED(LCD_BED_LEVELING)
       MENU_ITEM_EDIT(float43, MSG_BED_Z, &mbl.z_offset, -1, 1);
     #endif
-
+    #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+      MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(float3, MSG_Z_FADE_HEIGHT, &new_z_fade_height, 0.0, 100.0, _lcd_set_z_fade_height);
+    #endif
     //
     // Nozzle:
     // Nozzle [1-4]:
@@ -1926,11 +1964,6 @@ void kill_screen(const char* lcd_msg) {
     static bool new_level_state;
     void _lcd_toggle_bed_leveling() { set_bed_leveling_enabled(new_level_state); }
 
-    #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
-      static float new_z_fade_height;
-      void _lcd_set_z_fade_height() { set_z_fade_height(new_z_fade_height); }
-    #endif
-
     /**
      * Step 1: Bed Level entry-point
      *
@@ -1991,16 +2024,23 @@ void kill_screen(const char* lcd_msg) {
       END_MENU();
     }
 
-    void _lcd_goto_bed_leveling() {
-      lcd_goto_screen(lcd_bed_leveling);
-      #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+    #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+      void _lcd_goto_bed_leveling() {
+        lcd_goto_screen(lcd_bed_leveling);
         new_z_fade_height = planner.z_fade_height;
-      #endif
-    }
+      }
+    #endif
 
   #elif ENABLED(AUTO_BED_LEVELING_UBL)
 
     void _lcd_ubl_level_bed();
+
+    #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+      void _lcd_goto_ubl_level_bed() {
+        lcd_goto_screen(_lcd_ubl_level_bed);
+        new_z_fade_height = planner.z_fade_height;
+      }
+    #endif
 
     static int16_t ubl_storage_slot = 0,
                custom_hotend_temp = 190,
@@ -2518,6 +2558,9 @@ void kill_screen(const char* lcd_msg) {
       MENU_ITEM(submenu, MSG_UBL_OUTPUT_MAP, _lcd_ubl_output_map);
       MENU_ITEM(submenu, MSG_UBL_TOOLS, _lcd_ubl_tools_menu);
       MENU_ITEM(gcode, MSG_UBL_INFO_UBL, PSTR("G29 W"));
+      #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+        MENU_MULTIPLIER_ITEM_EDIT_CALLBACK(float3, MSG_Z_FADE_HEIGHT, &new_z_fade_height, 0.0, 100.0, _lcd_set_z_fade_height);
+      #endif
       END_MENU();
     }
 
@@ -2559,7 +2602,13 @@ void kill_screen(const char* lcd_msg) {
     // Level Bed
     //
     #if ENABLED(AUTO_BED_LEVELING_UBL)
-      MENU_ITEM(submenu, MSG_UBL_LEVEL_BED, _lcd_ubl_level_bed);
+      MENU_ITEM(submenu, MSG_UBL_LEVEL_BED,
+        #if ENABLED(ENABLE_LEVELING_FADE_HEIGHT)
+          _lcd_goto_ubl_level_bed
+        #else
+          _lcd_ubl_level_bed
+        #endif
+      );
     #elif ENABLED(LCD_BED_LEVELING)
       #if ENABLED(PROBE_MANUALLY)
         if (!g29_in_progress)
@@ -2832,7 +2881,7 @@ void kill_screen(const char* lcd_msg) {
    */
   inline void manual_move_to_current(AxisEnum axis
     #if E_MANUAL > 1
-      , int8_t eindex=-1
+      , const int8_t eindex=-1
     #endif
   ) {
     #if ENABLED(DUAL_X_CARRIAGE) || E_MANUAL > 1
@@ -2919,11 +2968,11 @@ void kill_screen(const char* lcd_msg) {
     }
     encoderPosition = 0;
     if (lcdDrawUpdate) {
-      const float pos = (processing_manual_move ? destination[axis] : current_position[axis]
+      const float pos = NATIVE_TO_LOGICAL(processing_manual_move ? destination[axis] : current_position[axis]
         #if IS_KINEMATIC
           + manual_move_offset
         #endif
-      );
+      , axis);
       lcd_implementation_drawedit(name, move_menu_scale >= 0.1 ? ftostr41sign(pos) : ftostr43sign(pos));
     }
   }
@@ -2932,7 +2981,7 @@ void kill_screen(const char* lcd_msg) {
   void lcd_move_z() { _lcd_move_xyz(PSTR(MSG_MOVE_Z), Z_AXIS); }
   void _lcd_move_e(
     #if E_MANUAL > 1
-      int8_t eindex=-1
+      const int8_t eindex=-1
     #endif
   ) {
     if (use_click()) { return lcd_goto_previous_menu(); }
@@ -3093,11 +3142,36 @@ void kill_screen(const char* lcd_msg) {
     else
       MENU_ITEM(gcode, MSG_AUTO_HOME, PSTR("G28"));
 
-    #if ENABLED(SWITCHING_EXTRUDER) || ENABLED(DUAL_X_CARRIAGE)
+    #if ENABLED(SWITCHING_EXTRUDER)
+
+      #if EXTRUDERS == 4
+        switch (active_extruder) {
+          case 0: MENU_ITEM(gcode, MSG_SELECT " " MSG_E2, PSTR("T1")); break;
+          case 1: MENU_ITEM(gcode, MSG_SELECT " " MSG_E1, PSTR("T0")); break;
+          case 2: MENU_ITEM(gcode, MSG_SELECT " " MSG_E4, PSTR("T3")); break;
+          case 3: MENU_ITEM(gcode, MSG_SELECT " " MSG_E3, PSTR("T2")); break;
+        }
+      #elif EXTRUDERS == 3
+        if (active_extruder < 2) {
+          if (active_extruder)
+            MENU_ITEM(gcode, MSG_SELECT " " MSG_E1, PSTR("T0"));
+          else
+            MENU_ITEM(gcode, MSG_SELECT " " MSG_E2, PSTR("T1"));
+        }
+      #else
+        if (active_extruder)
+          MENU_ITEM(gcode, MSG_SELECT " " MSG_E1, PSTR("T0"));
+        else
+          MENU_ITEM(gcode, MSG_SELECT " " MSG_E2, PSTR("T1"));
+      #endif
+
+    #elif ENABLED(DUAL_X_CARRIAGE)
+
       if (active_extruder)
         MENU_ITEM(gcode, MSG_SELECT " " MSG_E1, PSTR("T0"));
       else
         MENU_ITEM(gcode, MSG_SELECT " " MSG_E2, PSTR("T1"));
+
     #endif
 
     MENU_ITEM(submenu, MSG_MOVE_E, lcd_move_get_e_amount);
@@ -3158,7 +3232,7 @@ void kill_screen(const char* lcd_msg) {
     #if DISABLED(NO_VOLUMETRICS) || ENABLED(ADVANCED_PAUSE_FEATURE)
       MENU_ITEM(submenu, MSG_FILAMENT, lcd_control_filament_menu);
     #elif ENABLED(LIN_ADVANCE)
-      MENU_ITEM_EDIT(float3, MSG_ADVANCE_K, &planner.extruder_advance_k, 0, 999);
+      MENU_ITEM_EDIT(float32, MSG_ADVANCE_K, &planner.extruder_advance_K, 0, 999);
     #endif
 
     #if HAS_LCD_CONTRAST
@@ -3671,7 +3745,7 @@ void kill_screen(const char* lcd_msg) {
       MENU_BACK(MSG_CONTROL);
 
       #if ENABLED(LIN_ADVANCE)
-        MENU_ITEM_EDIT(float3, MSG_ADVANCE_K, &planner.extruder_advance_k, 0, 999);
+        MENU_ITEM_EDIT(float32, MSG_ADVANCE_K, &planner.extruder_advance_K, 0, 999);
       #endif
 
       #if DISABLED(NO_VOLUMETRICS)
@@ -4770,6 +4844,9 @@ void kill_screen(const char* lcd_msg) {
       encoderTopLine = 0;
       encoderPosition = 2 * ENCODER_STEPS_PER_MENU_ITEM;
       screen_changed = true;
+      #if ENABLED(DOGLCD)
+        drawing_screen = false;
+      #endif
       lcdDrawUpdate = LCDVIEW_CLEAR_CALL_REDRAW;
     }
 
@@ -4791,11 +4868,9 @@ void lcd_init() {
     #if BUTTON_EXISTS(EN1)
       SET_INPUT_PULLUP(BTN_EN1);
     #endif
-
     #if BUTTON_EXISTS(EN2)
       SET_INPUT_PULLUP(BTN_EN2);
     #endif
-
     #if BUTTON_EXISTS(ENC)
       SET_INPUT_PULLUP(BTN_ENC);
     #endif
@@ -4940,6 +5015,14 @@ void lcd_update() {
       }
     }
     else wait_for_unclick = false;
+
+    #if BUTTON_EXISTS(BACK)
+      if (LCD_BACK_CLICKED) {
+        lcd_quick_feedback(true);
+        lcd_goto_previous_menu();
+      }
+    #endif
+
   #endif
 
   #if ENABLED(SDSUPPORT) && PIN_EXISTS(SD_DETECT)
@@ -5101,20 +5184,35 @@ void lcd_update() {
       #endif
 
       #if ENABLED(DOGLCD)
-        if (!drawing_screen) {                        // If not already drawing pages
-          u8g.firstPage();                            // Start the first page
-          drawing_screen = 1;                         // Flag as drawing pages
-        }
-        lcd_setFont(FONT_MENU);                       // Setup font for every page draw
-        u8g.setColorIndex(1);                         // And reset the color
-        CURRENTSCREEN();                              // Draw and process the current screen
+        #if ENABLED(LIGHTWEIGHT_UI)
+          #if ENABLED(ULTIPANEL)
+            const bool in_status = currentScreen == lcd_status_screen;
+          #else
+            constexpr bool in_status = true;
+          #endif
+          const bool do_u8g_loop = !in_status;
+          lcd_in_status(in_status);
+          if (in_status) lcd_status_screen();
+        #else
+          constexpr bool do_u8g_loop = true;
+        #endif
+        if (do_u8g_loop) {
+          if (!drawing_screen) {                        // If not already drawing pages
+            u8g.firstPage();                            // Start the first page
+            drawing_screen = first_page = true;         // Flag as drawing pages
+          }
+          lcd_setFont(FONT_MENU);                       // Setup font for every page draw
+          u8g.setColorIndex(1);                         // And reset the color
+          CURRENTSCREEN();                              // Draw and process the current screen
+          first_page = false;
 
-        // The screen handler can clear drawing_screen for an action that changes the screen.
-        // If still drawing and there's another page, update max-time and return now.
-        // The nextPage will already be set up on the next call.
-        if (drawing_screen && (drawing_screen = u8g.nextPage())) {
-          NOLESS(max_display_update_time, millis() - ms);
-          return;
+          // The screen handler can clear drawing_screen for an action that changes the screen.
+          // If still drawing and there's another page, update max-time and return now.
+          // The nextPage will already be set up on the next call.
+          if (drawing_screen && (drawing_screen = u8g.nextPage())) {
+            NOLESS(max_display_update_time, millis() - ms);
+            return;
+          }
         }
       #else
         CURRENTSCREEN();
@@ -5157,6 +5255,7 @@ void lcd_update() {
 inline void pad_message_string() {
   uint8_t i = 0, j = 0;
   char c;
+  lcd_status_message[MAX_MESSAGE_LENGTH] = '\0';
   while ((c = lcd_status_message[i]) && j < LCD_WIDTH) {
     if (PRINTABLE(c)) j++;
     i++;
@@ -5206,7 +5305,7 @@ bool lcd_hasstatus() { return (lcd_status_message[0] != '\0'); }
 
 void lcd_setstatus(const char * const message, const bool persist) {
   if (lcd_status_message_level > 0) return;
-  strncpy(lcd_status_message, message, COUNT(lcd_status_message) - 1);
+  strncpy(lcd_status_message, message, MAX_MESSAGE_LENGTH);
   lcd_finishstatus(persist);
 }
 
@@ -5214,7 +5313,7 @@ void lcd_setstatusPGM(const char * const message, int8_t level) {
   if (level < 0) level = lcd_status_message_level = 0;
   if (level < lcd_status_message_level) return;
   lcd_status_message_level = level;
-  strncpy_P(lcd_status_message, message, COUNT(lcd_status_message) - 1);
+  strncpy_P(lcd_status_message, message, MAX_MESSAGE_LENGTH);
   lcd_finishstatus(level > 0);
 }
 
@@ -5223,7 +5322,7 @@ void lcd_status_printf_P(const uint8_t level, const char * const fmt, ...) {
   lcd_status_message_level = level;
   va_list args;
   va_start(args, fmt);
-  vsnprintf_P(lcd_status_message, COUNT(lcd_status_message) - 1, fmt, args);
+  vsnprintf_P(lcd_status_message, MAX_MESSAGE_LENGTH, fmt, args);
   va_end(args);
   lcd_finishstatus(level > 0);
 }
@@ -5295,6 +5394,9 @@ void lcd_reset_alert_level() { lcd_status_message_level = 0; }
 
         #if BUTTON_EXISTS(ENC)
           if (BUTTON_PRESSED(ENC)) newbutton |= EN_C;
+        #endif
+        #if BUTTON_EXISTS(BACK)
+          if (BUTTON_PRESSED(BACK)) newbutton |= EN_D;
         #endif
 
         //

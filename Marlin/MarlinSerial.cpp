@@ -34,7 +34,7 @@
 
 #include "MarlinConfig.h"
 
-#if !defined(USBCON) && (defined(UBRRH) || defined(UBRR0H) || defined(UBRR1H) || defined(UBRR2H) || defined(UBRR3H))
+#if !(defined(__AVR__) && defined(USBCON)) && (defined(UBRRH) || defined(UBRR0H) || defined(UBRR1H) || defined(UBRR2H) || defined(UBRR3H))
 
   #include "MarlinSerial.h"
   #include "Marlin.h"
@@ -79,6 +79,8 @@
   #endif
 
   #if ENABLED(EMERGENCY_PARSER)
+
+    bool killed_by_M112; // = false
 
     #include "stepper.h"
     #include "language.h"
@@ -155,7 +157,7 @@
                 wait_for_user = wait_for_heatup = false;
                 break;
               case state_M112:
-                kill(PSTR(MSG_KILLED));
+                killed_by_M112 = true;
                 break;
               case state_M410:
                 quickstop_stepper();
@@ -649,9 +651,9 @@
   // Preinstantiate
   MarlinSerial customizedSerial;
 
-#endif // !USBCON && (UBRRH || UBRR0H || UBRR1H || UBRR2H || UBRR3H)
+#endif // !(__AVR__ && USBCON) && (UBRRH || UBRR0H || UBRR1H || UBRR2H || UBRR3H)
 
 // For AT90USB targets use the UART for BT interfacing
-#if defined(USBCON) && ENABLED(BLUETOOTH)
+#if defined(__AVR__) && defined(USBCON) && ENABLED(BLUETOOTH)
   HardwareSerial bluetoothSerial;
 #endif

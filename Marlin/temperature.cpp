@@ -30,6 +30,7 @@
 #include "ultralcd.h"
 #include "planner.h"
 #include "language.h"
+#include "printcounter.h"
 
 #if ENABLED(HEATER_0_USES_MAX6675)
   #include "MarlinSPI.h"
@@ -415,7 +416,7 @@ uint8_t Temperature::soft_pwm_amount[HOTENDS],
 
       // Report heater states every 2 seconds
       if (ELAPSED(ms, next_temp_ms)) {
-        #if HAS_TEMP_HOTEND || HAS_TEMP_BED
+        #if HAS_TEMP_SENSOR
           print_heaterstates();
           SERIAL_EOL();
         #endif
@@ -742,6 +743,10 @@ void Temperature::manage_heater() {
 
   #if ENABLED(PROBING_HEATERS_OFF) && ENABLED(BED_LIMIT_SWITCHING)
     static bool last_pause_state;
+  #endif
+
+  #if ENABLED(EMERGENCY_PARSER)
+    if (killed_by_M112) kill(PSTR(MSG_KILLED));
   #endif
 
   if (!temp_meas_ready) return;
@@ -2230,7 +2235,7 @@ void Temperature::isr() {
   SBI(TIMSK0, OCIE0B); //re-enable Temperature ISR
 }
 
-#if HAS_TEMP_HOTEND || HAS_TEMP_BED
+#if HAS_TEMP_SENSOR
 
   void print_heater_state(const float &c, const float &t,
     #if ENABLED(SHOW_TEMP_ADC_VALUES)
@@ -2321,4 +2326,4 @@ void Temperature::isr() {
 
   #endif // AUTO_REPORT_TEMPERATURES
 
-#endif // HAS_TEMP_HOTEND || HAS_TEMP_BED
+#endif // HAS_TEMP_SENSOR
