@@ -89,7 +89,9 @@
  * M24  - Start/resume SD print. (Requires SDSUPPORT)
  * M25  - Pause SD print. (Requires SDSUPPORT)
  * M26  - Set SD position in bytes: "M26 S12345". (Requires SDSUPPORT)
- * M27  - Report SD print status. (Requires SDSUPPORT) Or, with 'S<seconds>' set the SD status auto-report interval. (Requires AUTO_REPORT_SD_STATUS)
+ * M27  - Report SD print status. (Requires SDSUPPORT)
+ *        OR, with 'S<seconds>' set the SD status auto-report interval. (Requires AUTO_REPORT_SD_STATUS)
+ *        OR, with 'C' get the current filename.
  * M28  - Start SD write: "M28 /path/file.gco". (Requires SDSUPPORT)
  * M29  - Stop SD write. (Requires SDSUPPORT)
  * M30  - Delete file from SD: "M30 /path/file.gco"
@@ -165,7 +167,7 @@
  * M209 - Turn Automatic Retract Detection on/off: S<0|1> (For slicers that don't support G10/11). (Requires FWRETRACT)
           Every normal extrude-only move will be classified as retract depending on the direction.
  * M211 - Enable, Disable, and/or Report software endstops: S<0|1> (Requires MIN_SOFTWARE_ENDSTOPS or MAX_SOFTWARE_ENDSTOPS)
- * M218 - Set a tool offset: "M218 T<index> X<offset> Y<offset>". (Requires 2 or more extruders)
+ * M218 - Set/get a tool offset: "M218 T<index> X<offset> Y<offset>". (Requires 2 or more extruders)
  * M220 - Set Feedrate Percentage: "M220 S<percent>" (i.e., "FR" on the LCD)
  * M221 - Set Flow Percentage: "M221 S<percent>"
  * M226 - Wait until a pin is in a given state: "M226 P<pin> S<state>"
@@ -263,7 +265,7 @@
 #include "printcounter.h"
 #include "duration_t.h"
 #include "types.h"
-#include "gcode.h"
+#include "parser.h"
 
 #if ENABLED(AUTO_POWER_CONTROL)
   #include "power.h"
@@ -1557,10 +1559,11 @@ inline void buffer_line_to_destination(const float &fr_mm_s) {
 #endif // IS_KINEMATIC
 
 /**
- *  Plan a move to (X, Y, Z) and set the current_position
- *  The final current_position may not be the one that was requested
+ * Plan a move to (X, Y, Z) and set the current_position.
+ * The final current_position may not be the one that was requested
+ * Caution: 'destination' is modified by this function.
  */
-void do_blocking_move_to(const float &rx, const float &ry, const float &rz, const float &fr_mm_s/*=0.0*/) {
+void do_blocking_move_to(const float rx, const float ry, const float rz, const float &fr_mm_s/*=0.0*/) {
   const float old_feedrate_mm_s = feedrate_mm_s;
 
   #if ENABLED(DEBUG_LEVELING_FEATURE)
@@ -3092,7 +3095,7 @@ static void homeaxis(const AxisEnum axis) {
   // Clear retracted status if homing the Z axis
   #if ENABLED(FWRETRACT)
     if (axis == Z_AXIS)
-      for (uint8_t i = 0; i < EXTRUDERS; i++) fwretract.retracted[i] = false;
+      fwretract.hop_amount = 0.0;
   #endif
 
   #if ENABLED(DEBUG_LEVELING_FEATURE)
@@ -3961,7 +3964,9 @@ inline void gcode_G28(const bool always_home_all) {
 
   // Always home with tool 0 active
   #if HOTENDS > 1
-    const uint8_t old_tool_index = active_extruder;
+    #if DISABLED(DELTA) || ENABLED(DELTA_HOME_TO_SAFE_ZONE)
+      const uint8_t old_tool_index = active_extruder;
+    #endif
     tool_change(0, 0, true);
   #endif
 
@@ -4103,7 +4108,7 @@ inline void gcode_G28(const bool always_home_all) {
   clean_up_after_endstop_or_probe_move();
 
   // Restore the active tool after homing
-  #if HOTENDS > 1
+  #if HOTENDS > 1 && (DISABLED(DELTA) || ENABLED(DELTA_HOME_TO_SAFE_ZONE))
     #if ENABLED(PARKING_EXTRUDER)
       #define NO_FETCH false // fetch the previous toolhead
     #else
@@ -4132,16 +4137,6 @@ inline void gcode_G28(const bool always_home_all) {
 } // G28
 
 void home_all_axes() { gcode_G28(true); }
-
-#if HAS_PROBING_PROCEDURE
-
-  void out_of_range_error(const char* p_edge) {
-    SERIAL_PROTOCOLPGM("?Probe ");
-    serialprintPGM(p_edge);
-    SERIAL_PROTOCOLLNPGM(" position out of range.");
-  }
-
-#endif
 
 #if ENABLED(MESH_BED_LEVELING) || ENABLED(PROBE_MANUALLY)
 
@@ -4656,32 +4651,9 @@ void home_all_axes() { gcode_G28(true); }
         front_probe_bed_position = parser.seenval('F') ? (int)RAW_Y_POSITION(parser.value_linear_units()) : FRONT_PROBE_BED_POSITION;
         back_probe_bed_position  = parser.seenval('B') ? (int)RAW_Y_POSITION(parser.value_linear_units()) : BACK_PROBE_BED_POSITION;
 
-        const bool left_out_l = left_probe_bed_position < MIN_PROBE_X,
-                   left_out = left_out_l || left_probe_bed_position > right_probe_bed_position - (MIN_PROBE_EDGE),
-                   right_out_r = right_probe_bed_position > MAX_PROBE_X,
-                   right_out = right_out_r || right_probe_bed_position < left_probe_bed_position + MIN_PROBE_EDGE,
-                   front_out_f = front_probe_bed_position < MIN_PROBE_Y,
-                   front_out = front_out_f || front_probe_bed_position > back_probe_bed_position - (MIN_PROBE_EDGE),
-                   back_out_b = back_probe_bed_position > MAX_PROBE_Y,
-                   back_out = back_out_b || back_probe_bed_position < front_probe_bed_position + MIN_PROBE_EDGE;
-
-        if (left_out || right_out || front_out || back_out) {
-          if (left_out) {
-            out_of_range_error(PSTR("(L)eft"));
-            left_probe_bed_position = left_out_l ? MIN_PROBE_X : right_probe_bed_position - (MIN_PROBE_EDGE);
-          }
-          if (right_out) {
-            out_of_range_error(PSTR("(R)ight"));
-            right_probe_bed_position = right_out_r ? MAX_PROBE_X : left_probe_bed_position + MIN_PROBE_EDGE;
-          }
-          if (front_out) {
-            out_of_range_error(PSTR("(F)ront"));
-            front_probe_bed_position = front_out_f ? MIN_PROBE_Y : back_probe_bed_position - (MIN_PROBE_EDGE);
-          }
-          if (back_out) {
-            out_of_range_error(PSTR("(B)ack"));
-            back_probe_bed_position = back_out_b ? MAX_PROBE_Y : front_probe_bed_position + MIN_PROBE_EDGE;
-          }
+        if ( !position_is_reachable_by_probe(left_probe_bed_position, front_probe_bed_position)
+          || !position_is_reachable_by_probe(right_probe_bed_position, back_probe_bed_position)) {
+          SERIAL_PROTOCOLLNPGM("? (L,R,F,B) out of bounds.");
           return;
         }
 
@@ -5665,15 +5637,15 @@ void home_all_axes() { gcode_G28(true); }
    *      P1     Probe center and set height only.
    *      P2     Probe center and towers. Set height, endstops and delta radius.
    *      P3     Probe all positions: center, towers and opposite towers. Set all.
-   *      P4-P10 Probe all positions + at different itermediate locations and average them.
+   *      P4-P10 Probe all positions + at different intermediate locations and average them.
    *
    *   T   Don't calibrate tower angle corrections
    *
    *   Cn.nn  Calibration precision; when omitted calibrates to maximum precision
    *
-   *   Fn  Force to run at least n iterations and takes the best result
+   *   Fn  Force to run at least n iterations and take the best result
    *
-   *   A   Auto tune calibartion factors (set in Configuration.h)
+   *   A   Auto-tune calibration factors (set in Configuration.h)
    *
    *   Vn  Verbose level:
    *      V0  Dry-run mode. Report settings and probe results. No calibration.
@@ -6912,15 +6884,23 @@ inline void gcode_M17() {
   }
 
   /**
-   * M27: Get SD Card status or set the SD status auto-report interval.
+   * M27: Get SD Card status
+   *      OR, with 'S<seconds>' set the SD status auto-report interval. (Requires AUTO_REPORT_SD_STATUS)
+   *      OR, with 'C' get the current filename.
    */
   inline void gcode_M27() {
+    if (parser.seen('C')) {
+      SERIAL_ECHOPGM("Current file: ");
+      card.printFilename();
+    }
+
     #if ENABLED(AUTO_REPORT_SD_STATUS)
-      if (parser.seenval('S'))
+      else if (parser.seenval('S'))
         card.set_auto_report_interval(parser.value_byte());
-      else
     #endif
-        card.getStatus();
+
+    else
+      card.getStatus();
   }
 
   /**
@@ -7417,21 +7397,10 @@ inline void gcode_M42() {
     const float X_probe_location = parser.linearval('X', X_current + X_PROBE_OFFSET_FROM_EXTRUDER),
                 Y_probe_location = parser.linearval('Y', Y_current + Y_PROBE_OFFSET_FROM_EXTRUDER);
 
-    #if DISABLED(DELTA)
-      if (!WITHIN(X_probe_location, MIN_PROBE_X, MAX_PROBE_X)) {
-        out_of_range_error(PSTR("X"));
-        return;
-      }
-      if (!WITHIN(Y_probe_location, MIN_PROBE_Y, MAX_PROBE_Y)) {
-        out_of_range_error(PSTR("Y"));
-        return;
-      }
-    #else
-      if (!position_is_reachable_by_probe(X_probe_location, Y_probe_location)) {
-        SERIAL_PROTOCOLLNPGM("? (X,Y) location outside of probeable radius.");
-        return;
-      }
-    #endif
+    if (!position_is_reachable_by_probe(X_probe_location, Y_probe_location)) {
+      SERIAL_PROTOCOLLNPGM("? (X,Y) out of bounds.");
+      return;
+    }
 
     bool seen_L = parser.seen('L');
     uint8_t n_legs = seen_L ? parser.value_byte() : 0;
@@ -7476,8 +7445,8 @@ inline void gcode_M42() {
           float angle = random(0.0, 360.0);
           const float radius = random(
             #if ENABLED(DELTA)
-              0.1250000000 * (DELTA_PROBEABLE_RADIUS),
-              0.3333333333 * (DELTA_PROBEABLE_RADIUS)
+              0.1250000000 * (DELTA_PRINTABLE_RADIUS),
+              0.3333333333 * (DELTA_PRINTABLE_RADIUS)
             #else
               5.0, 0.125 * min(X_BED_SIZE, Y_BED_SIZE)
             #endif
@@ -8744,7 +8713,7 @@ inline void gcode_M121() { endstops.enable_globally(false); }
     // Lift Z axis
     if (parser.seenval('Z')) park_point.z = parser.linearval('Z');
 
-    #if HOTENDS > 1 && DISABLED(DUAL_X_CARRIAGE)
+    #if HOTENDS > 1 && DISABLED(DUAL_X_CARRIAGE) && DISABLED(DELTA)
       park_point.x += (active_extruder ? hotend_offset[X_AXIS][active_extruder] : 0);
       park_point.y += (active_extruder ? hotend_offset[Y_AXIS][active_extruder] : 0);
     #endif
@@ -9153,7 +9122,7 @@ inline void gcode_M211() {
 #if HOTENDS > 1
 
   /**
-   * M218 - set hotend offset (in linear units)
+   * M218 - Set/get hotend offset (in linear units)
    *
    *   T<tool>
    *   X<xoffset>
@@ -9163,26 +9132,43 @@ inline void gcode_M211() {
   inline void gcode_M218() {
     if (get_target_extruder_from_command(218) || target_extruder == 0) return;
 
-    if (parser.seenval('X')) hotend_offset[X_AXIS][target_extruder] = parser.value_linear_units();
-    if (parser.seenval('Y')) hotend_offset[Y_AXIS][target_extruder] = parser.value_linear_units();
+    bool report = true;
+    if (parser.seenval('X')) {
+      hotend_offset[X_AXIS][target_extruder] = parser.value_linear_units();
+      report = false;
+    }
+    if (parser.seenval('Y')) {
+      hotend_offset[Y_AXIS][target_extruder] = parser.value_linear_units();
+      report = false;
+    }
 
     #if ENABLED(DUAL_X_CARRIAGE) || ENABLED(SWITCHING_NOZZLE) || ENABLED(PARKING_EXTRUDER)
-      if (parser.seenval('Z')) hotend_offset[Z_AXIS][target_extruder] = parser.value_linear_units();
+      if (parser.seenval('Z')) {
+        hotend_offset[Z_AXIS][target_extruder] = parser.value_linear_units();
+        report = false;
+      }
     #endif
 
-    SERIAL_ECHO_START();
-    SERIAL_ECHOPGM(MSG_HOTEND_OFFSET);
-    HOTEND_LOOP() {
-      SERIAL_CHAR(' ');
-      SERIAL_ECHO(hotend_offset[X_AXIS][e]);
-      SERIAL_CHAR(',');
-      SERIAL_ECHO(hotend_offset[Y_AXIS][e]);
-      #if ENABLED(DUAL_X_CARRIAGE) || ENABLED(SWITCHING_NOZZLE) || ENABLED(PARKING_EXTRUDER)
+    if (report) {
+      SERIAL_ECHO_START();
+      SERIAL_ECHOPGM(MSG_HOTEND_OFFSET);
+      HOTEND_LOOP() {
+        SERIAL_CHAR(' ');
+        SERIAL_ECHO(hotend_offset[X_AXIS][e]);
         SERIAL_CHAR(',');
-        SERIAL_ECHO(hotend_offset[Z_AXIS][e]);
-      #endif
+        SERIAL_ECHO(hotend_offset[Y_AXIS][e]);
+        #if ENABLED(DUAL_X_CARRIAGE) || ENABLED(SWITCHING_NOZZLE) || ENABLED(PARKING_EXTRUDER)
+          SERIAL_CHAR(',');
+          SERIAL_ECHO(hotend_offset[Z_AXIS][e]);
+        #endif
+      }
+      SERIAL_EOL();
     }
-    SERIAL_EOL();
+
+    #if ENABLED(DELTA)
+      if (target_extruder == active_extruder)
+        do_blocking_move_to_xy(current_position[X_AXIS], current_position[Y_AXIS], planner.max_feedrate_mm_s[X_AXIS]);
+    #endif
   }
 
 #endif // HOTENDS > 1
@@ -10224,7 +10210,7 @@ inline void gcode_M502() {
     if (parser.seenval('X')) park_point.x = parser.linearval('X');
     if (parser.seenval('Y')) park_point.y = parser.linearval('Y');
 
-    #if HOTENDS > 1 && DISABLED(DUAL_X_CARRIAGE)
+    #if HOTENDS > 1 && DISABLED(DUAL_X_CARRIAGE) && DISABLED(DELTA)
       park_point.x += (active_extruder ? hotend_offset[X_AXIS][active_extruder] : 0);
       park_point.y += (active_extruder ? hotend_offset[Y_AXIS][active_extruder] : 0);
     #endif
@@ -11351,7 +11337,7 @@ void tool_change(const uint8_t tmp_extruder, const float fr_mm_s/*=0.0*/, bool n
             const float z_diff = hotend_offset[Z_AXIS][active_extruder] - hotend_offset[Z_AXIS][tmp_extruder],
                         z_raise = 0.3 + (z_diff > 0.0 ? z_diff : 0.0);
 
-            // Always raise by some amount (destination copied from current_position earlier)
+            // Always raise by some amount
             current_position[Z_AXIS] += z_raise;
             planner.buffer_line_kinematic(current_position, planner.max_feedrate_mm_s[Z_AXIS], active_extruder);
             move_nozzle_servo(tmp_extruder);
@@ -11461,11 +11447,24 @@ void tool_change(const uint8_t tmp_extruder, const float fr_mm_s/*=0.0*/, bool n
         // Tell the planner the new "current position"
         SYNC_PLAN_POSITION_KINEMATIC();
 
-        // Move to the "old position" (move the extruder into place)
+        #if ENABLED(DELTA)
+          //LOOP_XYZ(i) update_software_endstops(i); // or modify the constrain function
+          // Do a small lift to avoid the workpiece in the move back (below)
+          const bool safe_to_move = current_position[Z_AXIS] < delta_clip_start_height - 1;
+          if (!no_move && IsRunning() && safe_to_move) {
+            ++current_position[Z_AXIS];
+            planner.buffer_line_kinematic(current_position, planner.max_feedrate_mm_s[Z_AXIS], active_extruder);
+          }
+        #else
+          constexpr bool safe_to_move = true;
+        #endif
+
         #if ENABLED(SWITCHING_NOZZLE)
           destination[Z_AXIS] += z_diff;  // Include the Z restore with the "move back"
         #endif
-        if (!no_move && IsRunning()) {
+
+        // Move to the "old position" (move the extruder into place)
+        if (safe_to_move && !no_move && IsRunning()) {
           #if ENABLED(DEBUG_LEVELING_FEATURE)
             if (DEBUGGING(LEVELING)) DEBUG_POS("Move back", destination);
           #endif
@@ -12284,18 +12283,29 @@ void ok_to_send() {
    *   (see above)
    */
 
-  #define DELTA_DEBUG() do { \
-      SERIAL_ECHOPAIR("cartesian X:", raw[X_AXIS]); \
-      SERIAL_ECHOPAIR(" Y:", raw[Y_AXIS]);          \
-      SERIAL_ECHOLNPAIR(" Z:", raw[Z_AXIS]);        \
+  #define DELTA_DEBUG(VAR) do { \
+      SERIAL_ECHOPAIR("cartesian X:", VAR[X_AXIS]); \
+      SERIAL_ECHOPAIR(" Y:", VAR[Y_AXIS]);          \
+      SERIAL_ECHOLNPAIR(" Z:", VAR[Z_AXIS]);        \
       SERIAL_ECHOPAIR("delta A:", delta[A_AXIS]);   \
       SERIAL_ECHOPAIR(" B:", delta[B_AXIS]);        \
       SERIAL_ECHOLNPAIR(" C:", delta[C_AXIS]);      \
     }while(0)
 
   void inverse_kinematics(const float raw[XYZ]) {
-    DELTA_IK(raw);
-    // DELTA_DEBUG();
+    #if HOTENDS > 1
+      // Delta hotend offsets must be applied in Cartesian space with no "spoofing"
+      const float pos[XYZ] = {
+        raw[X_AXIS] - hotend_offset[X_AXIS][active_extruder],
+        raw[Y_AXIS] - hotend_offset[Y_AXIS][active_extruder],
+        raw[Z_AXIS]
+      };
+      DELTA_IK(pos);
+      //DELTA_DEBUG(pos);
+    #else
+      DELTA_IK(raw);
+      //DELTA_DEBUG(raw);
+    #endif
   }
 
   /**
@@ -12305,10 +12315,10 @@ void ok_to_send() {
   float delta_safe_distance_from_top() {
     float cartesian[XYZ] = { 0, 0, 0 };
     inverse_kinematics(cartesian);
-    float distance = delta[A_AXIS];
+    const float centered_extent = delta[A_AXIS];
     cartesian[Y_AXIS] = DELTA_PRINTABLE_RADIUS;
     inverse_kinematics(cartesian);
-    return FABS(distance - delta[A_AXIS]);
+    return FABS(centered_extent - delta[A_AXIS]);
   }
 
   /**
@@ -12747,7 +12757,7 @@ void set_current_from_steppers_for_axis(const AxisEnum axis) {
       }
 
       LOOP_XYZE(i) raw[i] += segment_distance[i];
-      #if ENABLED(DELTA)
+      #if ENABLED(DELTA) && HOTENDS < 2
         DELTA_IK(raw); // Delta can inline its kinematics
       #else
         inverse_kinematics(raw);
@@ -13849,12 +13859,6 @@ void setup() {
       pe_deactivate_magnet(0);
       pe_deactivate_magnet(1);
     #endif
-  #endif
-  #if ENABLED(MKS_12864OLED) || ENABLED(MKS_12864OLED_SSD1306)
-    SET_OUTPUT(LCD_PINS_DC);
-    OUT_WRITE(LCD_PINS_RS, LOW);
-    delay(1000);
-    WRITE(LCD_PINS_RS, HIGH);
   #endif
 
   #if ENABLED(USE_WATCHDOG)
