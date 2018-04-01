@@ -543,7 +543,7 @@
  * Override with M92
  *                                      X, Y, Z, E0 [, E1[, E2[, E3[, E4]]]]
  */
-#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 100.73 }
+#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 95.03 }
 
 /**
  * Default Max Feed Rate (mm/s)
@@ -699,7 +699,7 @@
  */
 #define X_PROBE_OFFSET_FROM_EXTRUDER -23  // X offset: -left  +right  [of the nozzle]
 #define Y_PROBE_OFFSET_FROM_EXTRUDER -40  // Y offset: -front +behind [the nozzle]
-#define Z_PROBE_OFFSET_FROM_EXTRUDER -5.70   // Z offset: -below +above  [the nozzle]
+#define Z_PROBE_OFFSET_FROM_EXTRUDER -5.45   // Z offset: -below +above  [the nozzle]
 
 // Certain types of probes need to stay away from edges
 #define MIN_PROBE_EDGE 10
@@ -1114,7 +1114,8 @@
   // Or, set the default skew factors directly here
   // to override the above measurements:
   //#define XY_SKEW_FACTOR 0.0
-
+  //#define XY_SKEW_FACTOR 0.001557
+  
   //#define SKEW_CORRECTION_FOR_Z
   #if ENABLED(SKEW_CORRECTION_FOR_Z)
     #define XZ_DIAG_AC 282.8427124746
