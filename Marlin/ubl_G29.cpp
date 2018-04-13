@@ -1605,6 +1605,10 @@
                   SERIAL_EOL();
                 }
               #endif
+              if (g29_verbose_level > 3) {
+                serial_spaces(16);
+                SERIAL_ECHOLNPAIR("Corrected_Z=", measured_z);
+              }
 
               incremental_LSF(&lsf_results, rx, ry, measured_z);
             }
@@ -1612,7 +1616,7 @@
 
           zig_zag ^= true;
         }
-
+        STOW_PROBE();
       }
 
       if (abort_flag || finish_incremental_LSF(&lsf_results)) {
