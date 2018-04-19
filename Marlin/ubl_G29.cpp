@@ -1609,7 +1609,6 @@
                 serial_spaces(16);
                 SERIAL_ECHOLNPAIR("Corrected_Z=", measured_z);
               }
-
               incremental_LSF(&lsf_results, rx, ry, measured_z);
             }
           }
