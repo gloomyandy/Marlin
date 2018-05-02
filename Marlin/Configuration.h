@@ -710,7 +710,7 @@
  */
 #define X_PROBE_OFFSET_FROM_EXTRUDER -23  // X offset: -left  +right  [of the nozzle]
 #define Y_PROBE_OFFSET_FROM_EXTRUDER -40  // Y offset: -front +behind [the nozzle]
-#define Z_PROBE_OFFSET_FROM_EXTRUDER -5.45   // Z offset: -below +above  [the nozzle]
+#define Z_PROBE_OFFSET_FROM_EXTRUDER -4.35   // Z offset: -below +above  [the nozzle]
 
 // Certain types of probes need to stay away from edges
 #define MIN_PROBE_EDGE 20
@@ -722,12 +722,12 @@
 #define Z_PROBE_SPEED_FAST HOMING_FEEDRATE_Z
 
 // Speed for the "accurate" probe of each point
-#define Z_PROBE_SPEED_SLOW (Z_PROBE_SPEED_FAST / 4)
+#define Z_PROBE_SPEED_SLOW (Z_PROBE_SPEED_FAST / 8)
 
 // The number of probes to perform at each point.
 //   Set to 2 for a fast/slow probe, using the second probe result.
 //   Set to 3 or more for slow probes, averaging the results.
-#define MULTIPLE_PROBING 4
+//#define MULTIPLE_PROBING 4
 
 /**
  * Z probes require clearance when deploying, stowing, and moving between
@@ -1124,14 +1124,14 @@
 
 #if ENABLED(SKEW_CORRECTION)
   // Input all length measurements here:
-  #define XY_DIAG_AC 141.38
-  #define XY_DIAG_BD 141.16
-  #define XY_SIDE_AD 99.92
+  #define XY_DIAG_AC 140.92
+  #define XY_DIAG_BD 140.99
+  #define XY_SIDE_AD 99.98
 
   // Or, set the default skew factors directly here
   // to override the above measurements:
   //#define XY_SKEW_FACTOR 0.0
-  //#define XY_SKEW_FACTOR 0.001557
+  //#define XY_SKEW_FACTOR -0.000497
   
   //#define SKEW_CORRECTION_FOR_Z
   #if ENABLED(SKEW_CORRECTION_FOR_Z)
