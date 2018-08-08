@@ -1321,9 +1321,16 @@ void homeaxis(const AxisEnum axis) {
   #if ENABLED(DEBUG_LEVELING_FEATURE)
     if (DEBUGGING(LEVELING)) SERIAL_ECHOLNPGM("Home 1 Fast:");
   #endif
-  do_homing_move(axis, 1.5f * max_length(axis) * axis_home_dir);
+
   #if HOMING_Z_WITH_PROBE && ENABLED(BLTOUCH)
-    // BLTOUCH needs to be stowed after trigger to let rearm itself
+    // BLTOUCH needs to be deployed every time
+    if (axis == Z_AXIS && set_bltouch_deployed(true)) return;
+  #endif
+
+  do_homing_move(axis, 1.5f * max_length(axis) * axis_home_dir);
+
+  #if HOMING_Z_WITH_PROBE && ENABLED(BLTOUCH)
+    // BLTOUCH needs to be stowed after trigger to rearm itself
     if (axis == Z_AXIS) set_bltouch_deployed(false);
   #endif
 
@@ -1353,16 +1360,17 @@ void homeaxis(const AxisEnum axis) {
     #endif
 
     #if HOMING_Z_WITH_PROBE && ENABLED(BLTOUCH)
-      // BLTOUCH needs to deploy everytime
+      // BLTOUCH needs to be deployed every time
       if (axis == Z_AXIS && set_bltouch_deployed(true)) return;
     #endif
-    do_homing_move(axis, 2 * bump, get_homing_bump_feedrate(axis));
-  }
 
-  // Put away the Z probe
-  #if HOMING_Z_WITH_PROBE
-    if (axis == Z_AXIS && STOW_PROBE()) return;
-  #endif
+    do_homing_move(axis, 2 * bump, get_homing_bump_feedrate(axis));
+
+    #if HOMING_Z_WITH_PROBE && ENABLED(BLTOUCH)
+      // BLTOUCH needs to be stowed after trigger to rearm itself
+      if (axis == Z_AXIS) set_bltouch_deployed(false);
+    #endif
+  }
 
   #if ENABLED(X_DUAL_ENDSTOPS) || ENABLED(Y_DUAL_ENDSTOPS) || ENABLED(Z_DUAL_ENDSTOPS)
     const bool pos_dir = axis_home_dir > 0;
@@ -1436,6 +1444,11 @@ void homeaxis(const AxisEnum axis) {
 
   #endif
 
+  // Put away the Z probe
+  #if HOMING_Z_WITH_PROBE
+    if (axis == Z_AXIS && STOW_PROBE()) return;
+  #endif
+
   // Clear retracted status if homing the Z axis
   #if ENABLED(FWRETRACT)
     if (axis == Z_AXIS) fwretract.hop_amount = 0.0;
@@ -1470,7 +1483,7 @@ void homeaxis(const AxisEnum axis) {
       if (axis == X_AXIS) {
 
         // In Dual X mode hotend_offset[X] is T1's home position
-        float dual_max_x = MAX(hotend_offset[X_AXIS][1], X2_MAX_POS);
+        const float dual_max_x = MAX(hotend_offset[X_AXIS][1], X2_MAX_POS);
 
         if (active_extruder != 0) {
           // T1 can move from X2_MIN_POS to X2_MAX_POS or X2 home position (whichever is larger)
