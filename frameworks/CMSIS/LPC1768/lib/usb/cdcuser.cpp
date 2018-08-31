@@ -68,6 +68,33 @@ uint32_t CDC_OutBufAvailChar(uint32_t *availChar) {
   *availChar = usb_serial.transmit_buffer.available();
   return (0);
 }
+
+/*
+ Send the contents of the buffer to the USB connection
+*/
+static uint32_t CDC_WriteBuffer() {
+  uint32_t numBytesAvail = usb_serial.transmit_buffer.available();
+
+  if (numBytesAvail > 0) {
+    numBytesAvail = numBytesAvail > (USB_CDC_BUFSIZE - 1) ? (USB_CDC_BUFSIZE - 1) : numBytesAvail;
+    for(uint32_t i = 0; i < numBytesAvail; ++i) {
+      usb_serial.transmit_buffer.read(&BulkBufIn[i]);
+    }
+    CDC_DepInEmpty = 0;
+    USB_WriteEP(CDC_DEP_IN, &BulkBufIn[0], numBytesAvail);
+    return numBytesAvail;
+  }
+  return 0;
+}
+
+/*
+ Start sending any data in the buffer. Remainder will be sent as soon as space
+ is available in the endpoint.
+*/
+void CDC_FlushBuffer() {
+  if (CDC_DepInEmpty)
+    CDC_WriteBuffer();
+}
 /* end Buffer handling */
 
 /*----------------------------------------------------------------------------
@@ -182,7 +209,7 @@ uint32_t CDC_GetLineCoding(void) {
  *---------------------------------------------------------------------------*/
 uint32_t CDC_SetControlLineState(unsigned short wControlSignalBitmap) {
   CDC_LineState = wControlSignalBitmap;
-  usb_serial.host_connected = wControlSignalBitmap > 0 ? true : false;
+  usb_serial.host_connected = (wControlSignalBitmap & CDC_DTE_PRESENT) != 0 ? true : false;
   return true;
 }
 
@@ -206,17 +233,8 @@ uint32_t CDC_SendBreak(unsigned short wDurationOfBreak) {
  Return Value: none
  *---------------------------------------------------------------------------*/
 void CDC_BulkIn(void) {
-  uint32_t numBytesAvail = usb_serial.transmit_buffer.available();
-
-  if (numBytesAvail > 0) {
-    numBytesAvail = numBytesAvail > (USB_CDC_BUFSIZE - 1) ? (USB_CDC_BUFSIZE - 1) : numBytesAvail;
-    for(uint32_t i = 0; i < numBytesAvail; ++i) {
-      usb_serial.transmit_buffer.read(&BulkBufIn[i]);
-    }
-    USB_WriteEP(CDC_DEP_IN, &BulkBufIn[0], numBytesAvail);
-  } else {
+  if (CDC_WriteBuffer() == 0)
     CDC_DepInEmpty = 1;
-  }
 }
 
 /*----------------------------------------------------------------------------
@@ -244,7 +262,6 @@ unsigned short CDC_GetSerialState(void) {
  Send the SERIAL_STATE notification as defined in usbcdc11.pdf, 6.3.5.
  *---------------------------------------------------------------------------*/
 void CDC_NotificationIn(void) {
-
   NotificationBuf[0] = 0xA1;                           // bmRequestType
   NotificationBuf[1] = CDC_NOTIFICATION_SERIAL_STATE;     // bNotification (SERIAL_STATE)
   NotificationBuf[2] = 0x00;                           // wValue

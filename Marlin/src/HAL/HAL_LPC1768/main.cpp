@@ -55,6 +55,9 @@ extern "C" {
   void SysTick_Handler(void) {
     ++_millis;
     disk_timerproc();
+    // If there is data in the usb serial buffer start sending it
+    if (CDC_DepInEmpty && !usb_serial.transmit_buffer.empty())
+      CDC_FlushBuffer();
   }
 
   // Runs after clock init and before global static constructors
@@ -86,15 +89,21 @@ extern "C" {
 extern uint32_t MSC_SD_Init(uint8_t pdrv);
 
 int main(void) {
-
-  (void)MSC_SD_Init(0);
+  debug_frmwrk_init();
+  _DBG("Debug running\n");
+  // Make sure the SPI CS pins are set early, before we atempt any SPI operations
+  digitalWrite(SS_PIN, HIGH);  // For some CPUs pinMode can write the wrong data so init desired data value first
+  pinMode(SS_PIN, OUTPUT);     // Solution for #8746 by @benlye
+  digitalWrite(SD_CS, HIGH);  // For some CPUs pinMode can write the wrong data so init desired data value first
+  pinMode(SD_CS, OUTPUT);     // Solution for #8746 by @benlye
 
   USB_Init();                               // USB Initialization
   USB_Connect(TRUE);                        // USB Connect
-
+  (void)MSC_SD_Init(0);
   const uint32_t usb_timeout = millis() + 2000;
   while (!USB_Configuration && PENDING(millis(), usb_timeout)) {
     delay(50);
+    HAL_idletask();
     #if PIN_EXISTS(LED)
       TOGGLE(LED_PIN);     // Flash fast while USB initialisation completes
     #endif

@@ -23,6 +23,7 @@
 extern uint32_t CDC_RdOutBuf(char *buffer, const uint32_t *length);
 extern uint32_t CDC_WrOutBuf(const char *buffer, uint32_t *length);
 extern uint32_t CDC_OutBufAvailChar(uint32_t *availChar);
+extern void CDC_FlushBuffer(void);
 
 /* CDC Data In/Out Endpoint Address */
 #define CDC_DEP_IN       0x82
@@ -59,4 +60,3 @@ extern unsigned short CDC_GetSerialState(void);
 extern unsigned short CDC_DepInEmpty;         // DataEndPoint IN empty
 
 #endif  /* __CDCUSER_H__ */
-

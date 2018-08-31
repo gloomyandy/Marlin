@@ -278,4 +278,12 @@ void HAL_pwm_init(void) {
   LPC_PWM1->PCR = _BV(13) | _BV(14);
 }
 
+extern void MSC_RunDeferredCommands();
+
+// HAL idle task
+void HAL_idletask(void) {
+  // Perform USB stack housekeeping
+  MSC_RunDeferredCommands();
+}
+
 #endif // TARGET_LPC1768

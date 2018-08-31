@@ -196,9 +196,7 @@ void USB_Reset (void) {
                (USB_SOF_EVENT   ? FRAME_INT : 0) |
                (USB_ERROR_EVENT ? ERR_INT   : 0);
 
-  WrCmdDat(CMD_SET_MODE, DAT_WR_BYTE(INAK_BI));
-
-
+  
 #if USB_DMA
   LPC_USB->USBUDCAH   = USB_RAM_ADR;
   LPC_USB->USBDMARClr = 0xFFFFFFFF;
