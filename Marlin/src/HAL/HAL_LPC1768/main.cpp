@@ -86,8 +86,6 @@ extern "C" {
   }
 }
 
-extern uint32_t MSC_SD_Init(uint8_t pdrv);
-
 int main(void) {
   debug_frmwrk_init();
   _DBG("Debug running\n");

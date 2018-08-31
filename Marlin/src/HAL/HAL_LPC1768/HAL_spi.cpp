@@ -124,7 +124,7 @@
   #include <lpc17xx_pinsel.h>
   #include <lpc17xx_ssp.h>
   #include <lpc17xx_clkpwr.h>
-  #include <debug_frmwrk.h>
+
   // decide which HW SPI device to use
   #ifndef LPC_HW_SPI_DEV
     #if (SCK_PIN == P0_07 && MISO_PIN == P0_08 && MOSI_PIN == P0_09)
@@ -146,9 +146,6 @@
 
 
   void spiBegin() {  // setup SCK, MOSI & MISO pins for SSP0
-_DBG("spiBegin\n");
-//watchdog_reset();
-//return;
     PINSEL_CFG_Type PinCfg;  // data structure to hold init values
     PinCfg.Funcnum = 2;
     PinCfg.OpenDrain = 0;
@@ -171,11 +168,7 @@ _DBG("spiBegin\n");
     CLKPWR_SetPCLKDiv(LPC_HW_SPI_DEV == 0 ? CLKPWR_PCLKSEL_SSP0 : CLKPWR_PCLKSEL_SSP1, CLKPWR_PCLKSEL_CCLK_DIV_2);
   }
 
-  extern "C" void set_spi_clock(uint32_t target_clock);
-  extern "C" uint8_t xchg_spi (uint8_t dat);
   void spiInit(uint8_t spiRate) {
-    //_DBG("spiInit\n");
-    //SSP_Cmd(LPC_SSPn, DISABLE); // Disable SSP0 before changing rate
     // table to convert Marlin spiRates (0-5 plus default) into bit rates
     uint32_t Marlin_speed[7]; // CPSR is always 2
     Marlin_speed[0] = 8333333; //(SCR:  2)  desired: 8,000,000  actual: 8,333,333  +4.2%  SPI_FULL_SPEED
@@ -185,8 +178,6 @@ _DBG("spiBegin\n");
     Marlin_speed[4] =  500000; //(SCR: 49)  desired:   500,000  actual:   500,000         SPI_SPEED_5
     Marlin_speed[5] =  250000; //(SCR: 99)  desired:   250,000  actual:   250,000         SPI_SPEED_6
     Marlin_speed[6] =  125000; //(SCR:199)  desired:   125,000  actual:   125,000         Default from HAL.h
-    //set_spi_clock(Marlin_speed[MIN(spiRate, 6)]);
-    //return;
     // setup for SPI mode
     SSP_CFG_Type HW_SPI_init; // data structure to hold init values
     SSP_ConfigStructInit(&HW_SPI_init);  // set values for SPI mode
@@ -199,7 +190,6 @@ _DBG("spiBegin\n");
 
   static uint8_t doio(uint8_t b) {
     /* send and receive a single byte */
-    if (SSP_GetStatus(LPC_SSPn, SSP_STAT_RXFIFO_NOTEMPTY)) _DBG("HAL_SPI I/O Error RX not empty\n");
     SSP_SendData(LPC_SSPn, b & 0x00FF);
     while (SSP_GetStatus(LPC_SSPn, SSP_STAT_BUSY));  // wait for it to finish
     return SSP_ReceiveData(LPC_SSPn) & 0x00FF;
