@@ -74,3 +74,12 @@
     ||  MB(RAMPS_14_RE_ARM_SF))
   #error "Re-ARM with REPRAP_DISCOUNT_FULL_GRAPHIC_SMART_CONTROLLER and TMC2130 require TMC_USE_SW_SPI"
 #endif
+
+#if ENABLED(SHARED_SD_CARD)
+  #if !ENABLED(SDSUPPORT)
+    #error "SHARED_SD_SUPPORT requires that SDSUPPORT is enabled."
+  #endif
+  #if ENABLED(SD_CHECK_AND_RETRY)
+    #error "SD_CHECK_AND_RETRY is not supported when SHARED_SD_CARD is defined."
+  #endif
+#endif

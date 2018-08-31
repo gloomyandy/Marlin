@@ -72,6 +72,7 @@ extern void _delay_ms(int delay);
 void MSC_RunDeferredCommands();
 
 uint32_t MSC_Aquire_Lock() {
+  if (media_lock == DEVICE_LOCK) return 0;
   NVIC_DisableIRQ(USB_IRQn);
   device_wants_lock = true;
   uint32_t end_millis = millis() + 1000;

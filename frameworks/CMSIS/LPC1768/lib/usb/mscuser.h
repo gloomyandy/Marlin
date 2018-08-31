@@ -101,4 +101,11 @@ struct Sense {
   Sense_ASCQ ascq;
 };
 
+/* Initialisation and locking */
+uint32_t MSC_Aquire_Lock(void);
+uint32_t MSC_Release_Lock(void);
+uint32_t MSC_SD_Init(uint8_t pdrv);
+
+void MSC_RunDeferredCommands(void);
+
 #endif  /* __MSCUSER_H__ */

@@ -22,6 +22,8 @@
 
 #include "../../inc/MarlinConfig.h"
 #include "../shared/Delay.h"
+#include "../../sd/cardreader.h"
+#include <usb/mscuser.h>
 
 HalSerial usb_serial;
 
@@ -278,10 +280,14 @@ void HAL_pwm_init(void) {
   LPC_PWM1->PCR = _BV(13) | _BV(14);
 }
 
-extern void MSC_RunDeferredCommands();
-
 // HAL idle task
 void HAL_idletask(void) {
+  #if ENABLED(SHARED_SD_CARD)
+    if (IS_SD_PRINTING || IS_SD_FILE_OPEN)
+      MSC_Aquire_Lock();
+    else
+      MSC_Release_Lock();
+  #endif
   // Perform USB stack housekeeping
   MSC_RunDeferredCommands();
 }

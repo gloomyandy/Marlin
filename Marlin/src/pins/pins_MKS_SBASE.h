@@ -183,7 +183,8 @@
 #define ENET_TXD0          P1_00   // J12-11
 #define ENET_TXD1          P1_01   // J12-12
 
-#define SBASE_CUSTOM_CABLE
+#define SHARED_SD_CARD
+//#define SBASE_CUSTOM_CABLE
 // Definitions for external SD card, usually attached to the LCD
 #if ENABLED(SBASE_CUSTOM_CABLE)
   /**
@@ -211,13 +212,19 @@
   // use standard cable and header, SPI and SD detect sre shared with on-board SD card
   // hardware SPI is used for both SD cards
   #define SD_DETECT_PIN      P0_27
-  //#undef SD_DETECT_PIN
+  #undef SD_DETECT_PIN
   #define SCK_PIN            P0_07
   #define MISO_PIN           P0_08
   #define MOSI_PIN           P0_09
-  #define SS_PIN             P0_28
+  #if ENABLED(SHARED_SD_CARD)
+    #define SS_PIN             P0_06
+    #define SD_CS              P0_06
+  #else
+    #define SS_PIN             P0_28
+    #define SD_CS              P0_06
+  #endif
   #define SDSS               SS_PIN
-  #define SD_CS              P0_06
+
 #endif
 
 /**
