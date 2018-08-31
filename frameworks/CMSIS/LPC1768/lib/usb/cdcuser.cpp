@@ -98,7 +98,7 @@ void CDC_FlushBuffer() {
 /* end Buffer handling */
 
 /*----------------------------------------------------------------------------
- CDC Initialisation
+ CDC Initialization
  Initializes the data structures and serial port
  Parameters:   None
  Return Value: None

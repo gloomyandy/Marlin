@@ -126,7 +126,7 @@ typedef struct SettingsDataStruct {
 
   float home_offset[XYZ];                               // M206 XYZ
 
-  #if HOTENDS > 1
+  #if HAS_HOTEND_OFFSET
     float hotend_offset[XYZ][HOTENDS - 1];              // M218 XYZ
   #endif
 
@@ -344,15 +344,15 @@ void MarlinSettings::postprocess() {
 }
 
 #if ENABLED(EEPROM_SETTINGS)
-  #include "../HAL/persistent_store_api.h"
+  #include "../HAL/shared/persistent_store_api.h"
 
   #define DUMMY_PID_VALUE 3000.0f
-  #define EEPROM_START() int eeprom_index = EEPROM_OFFSET; HAL::PersistentStore::access_start()
-  #define EEPROM_FINISH() HAL::PersistentStore::access_finish()
+  #define EEPROM_START() int eeprom_index = EEPROM_OFFSET; persistentStore.access_start()
+  #define EEPROM_FINISH() persistentStore.access_finish()
   #define EEPROM_SKIP(VAR) eeprom_index += sizeof(VAR)
-  #define EEPROM_WRITE(VAR) HAL::PersistentStore::write_data(eeprom_index, (uint8_t*)&VAR, sizeof(VAR), &working_crc)
-  #define EEPROM_READ(VAR) HAL::PersistentStore::read_data(eeprom_index, (uint8_t*)&VAR, sizeof(VAR), &working_crc, !validating)
-  #define EEPROM_READ_ALWAYS(VAR) HAL::PersistentStore::read_data(eeprom_index, (uint8_t*)&VAR, sizeof(VAR), &working_crc)
+  #define EEPROM_WRITE(VAR) persistentStore.write_data(eeprom_index, (uint8_t*)&VAR, sizeof(VAR), &working_crc)
+  #define EEPROM_READ(VAR) persistentStore.read_data(eeprom_index, (uint8_t*)&VAR, sizeof(VAR), &working_crc, !validating)
+  #define EEPROM_READ_ALWAYS(VAR) persistentStore.read_data(eeprom_index, (uint8_t*)&VAR, sizeof(VAR), &working_crc)
   #define EEPROM_ASSERT(TST,ERR) if (!(TST)) do{ SERIAL_ERROR_START_P(port); SERIAL_ERRORLNPGM_P(port, ERR); eeprom_error = true; }while(0)
 
   #if ENABLED(DEBUG_EEPROM_READWRITE)
@@ -433,7 +433,7 @@ void MarlinSettings::postprocess() {
     #endif
     EEPROM_WRITE(home_offset);
 
-    #if HOTENDS > 1
+    #if HAS_HOTEND_OFFSET
       // Skip hotend 0 which must be 0
       for (uint8_t e = 1; e < HOTENDS; e++)
         LOOP_XYZ(i) EEPROM_WRITE(hotend_offset[i][e]);
@@ -1038,7 +1038,7 @@ void MarlinSettings::postprocess() {
       // Hotend Offsets, if any
       //
 
-      #if HOTENDS > 1
+      #if HAS_HOTEND_OFFSET
         // Skip hotend 0 which must be 0
         for (uint8_t e = 1; e < HOTENDS; e++)
           LOOP_XYZ(i) EEPROM_READ(hotend_offset[i][e]);
@@ -1607,6 +1607,10 @@ void MarlinSettings::postprocess() {
       }
     #endif
 
+    const uint16_t MarlinSettings::meshes_end = persistentStore.capacity() - 129; // 128 (+1 because of the change to capacity rather than last valid address)
+                                                                                  // is a placeholder for the size of the MAT; the MAT will always
+                                                                                  // live at the very end of the eeprom
+
     uint16_t MarlinSettings::meshes_start_index() {
       return (datasize() + EEPROM_OFFSET + 32) & 0xFFF8;  // Pad the end of configuration data so it can float up
                                                           // or down a little bit without disrupting the mesh data
@@ -1627,7 +1631,7 @@ void MarlinSettings::postprocess() {
         if (!WITHIN(slot, 0, a - 1)) {
           #if ENABLED(EEPROM_CHITCHAT)
             ubl_invalid_slot(a);
-            SERIAL_PROTOCOLPAIR("E2END=", E2END);
+            SERIAL_PROTOCOLPAIR("E2END=", persistentStore.capacity() - 1);
             SERIAL_PROTOCOLPAIR(" meshes_end=", meshes_end);
             SERIAL_PROTOCOLLNPAIR(" slot=", slot);
             SERIAL_EOL();
@@ -1638,9 +1642,9 @@ void MarlinSettings::postprocess() {
         int pos = mesh_slot_offset(slot);
         uint16_t crc = 0;
 
-        HAL::PersistentStore::access_start();
-        const bool status = HAL::PersistentStore::write_data(pos, (uint8_t *)&ubl.z_values, sizeof(ubl.z_values), &crc);
-        HAL::PersistentStore::access_finish();
+        persistentStore.access_start();
+        const bool status = persistentStore.write_data(pos, (uint8_t *)&ubl.z_values, sizeof(ubl.z_values), &crc);
+        persistentStore.access_finish();
 
         if (status)
           SERIAL_PROTOCOLPGM("?Unable to save mesh data.\n");
@@ -1676,9 +1680,9 @@ void MarlinSettings::postprocess() {
         uint16_t crc = 0;
         uint8_t * const dest = into ? (uint8_t*)into : (uint8_t*)&ubl.z_values;
 
-        HAL::PersistentStore::access_start();
-        const uint16_t status = HAL::PersistentStore::read_data(pos, dest, sizeof(ubl.z_values), &crc);
-        HAL::PersistentStore::access_finish();
+        persistentStore.access_start();
+        const uint16_t status = persistentStore.read_data(pos, dest, sizeof(ubl.z_values), &crc);
+        persistentStore.access_finish();
 
         if (status)
           SERIAL_PROTOCOLPGM("?Unable to load mesh data.\n");
@@ -1745,16 +1749,8 @@ void MarlinSettings::reset(PORTARG_SOLO) {
     ZERO(home_offset);
   #endif
 
-  #if HOTENDS > 1
-    constexpr float tmp4[XYZ][HOTENDS] = {
-      HOTEND_OFFSET_X,
-      HOTEND_OFFSET_Y
-      #ifdef HOTEND_OFFSET_Z
-        , HOTEND_OFFSET_Z
-      #else
-        , { 0 }
-      #endif
-    };
+  #if HAS_HOTEND_OFFSET
+    constexpr float tmp4[XYZ][HOTENDS] = { HOTEND_OFFSET_X, HOTEND_OFFSET_Y, HOTEND_OFFSET_Z };
     static_assert(
       tmp4[X_AXIS][0] == 0 && tmp4[Y_AXIS][0] == 0 && tmp4[Z_AXIS][0] == 0,
       "Offsets for the first hotend must be 0.0."
@@ -2159,7 +2155,7 @@ void MarlinSettings::reset(PORTARG_SOLO) {
       SERIAL_ECHOLNPAIR_P(port, " Z", LINEAR_UNIT(home_offset[Z_AXIS]));
     #endif
 
-    #if HOTENDS > 1
+    #if HAS_HOTEND_OFFSET
       if (!forReplay) {
         CONFIG_ECHO_START;
         SERIAL_ECHOLNPGM_P(port, "Hotend offsets:");
@@ -2169,9 +2165,7 @@ void MarlinSettings::reset(PORTARG_SOLO) {
         SERIAL_ECHOPAIR_P(port, "  M218 T", (int)e);
         SERIAL_ECHOPAIR_P(port, " X", LINEAR_UNIT(hotend_offset[X_AXIS][e]));
         SERIAL_ECHOPAIR_P(port, " Y", LINEAR_UNIT(hotend_offset[Y_AXIS][e]));
-        #if HAS_HOTEND_OFFSET_Z
-          SERIAL_ECHOPAIR_P(port, " Z", LINEAR_UNIT(hotend_offset[Z_AXIS][e]));
-        #endif
+        SERIAL_ECHOPAIR_P(port, " Z", LINEAR_UNIT(hotend_offset[Z_AXIS][e]));
         SERIAL_EOL_P(port);
       }
     #endif

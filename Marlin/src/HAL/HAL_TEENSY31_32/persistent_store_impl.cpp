@@ -1,24 +1,16 @@
-#ifdef ARDUINO_ARCH_SAM
-
-#include "../persistent_store_api.h"
+#ifdef __MK20DX256__
 
 #include "../../inc/MarlinConfig.h"
 
 #if ENABLED(EEPROM_SETTINGS)
 
-extern void eeprom_flush(void);
+#include "../persistent_store_api.h"
 
 namespace HAL {
 namespace PersistentStore {
 
 bool access_start() { return true; }
-
-bool access_finish() {
-  #if DISABLED(I2C_EEPROM) && DISABLED(SPI_EEPROM)
-    eeprom_flush();
-  #endif
-  return true;
-}
+bool access_finish() { return true; }
 
 bool write_data(int &pos, const uint8_t *value, uint16_t size, uint16_t *crc) {
   while (size--) {
@@ -52,8 +44,8 @@ bool read_data(int &pos, uint8_t* value, uint16_t size, uint16_t *crc, const boo
   return false;
 }
 
-}
-}
+} // PersistentStore
+} // HAL
 
 #endif // EEPROM_SETTINGS
-#endif // __AVR__
+#endif // __MK20DX256__
