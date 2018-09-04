@@ -25,6 +25,7 @@ extern "C" {
 #include "usbhw.h"
 #include "usbcfg.h"
 #include "usbcore.h"
+#include "usbreg.h"
 #include "cdc.h"
 #include "cdcuser.h"
 
@@ -69,32 +70,6 @@ uint32_t CDC_OutBufAvailChar(uint32_t *availChar) {
   return (0);
 }
 
-/*
- Send the contents of the buffer to the USB connection
-*/
-static uint32_t CDC_WriteBuffer() {
-  uint32_t numBytesAvail = usb_serial.transmit_buffer.available();
-
-  if (numBytesAvail > 0) {
-    numBytesAvail = numBytesAvail > (USB_CDC_BUFSIZE - 1) ? (USB_CDC_BUFSIZE - 1) : numBytesAvail;
-    for(uint32_t i = 0; i < numBytesAvail; ++i) {
-      usb_serial.transmit_buffer.read(&BulkBufIn[i]);
-    }
-    CDC_DepInEmpty = 0;
-    USB_WriteEP(CDC_DEP_IN, &BulkBufIn[0], numBytesAvail);
-    return numBytesAvail;
-  }
-  return 0;
-}
-
-/*
- Start sending any data in the buffer. Remainder will be sent as soon as space
- is available in the endpoint.
-*/
-void CDC_FlushBuffer() {
-  if (CDC_DepInEmpty)
-    CDC_WriteBuffer();
-}
 /* end Buffer handling */
 
 /*----------------------------------------------------------------------------
@@ -104,6 +79,32 @@ void CDC_FlushBuffer() {
  Return Value: None
  *---------------------------------------------------------------------------*/
 void CDC_Init() {
+  CDC_DepInEmpty = 1;
+  CDC_LineState = 0;
+  CDC_SerialState = 0;
+  usb_serial.host_connected = false;
+}
+
+/*----------------------------------------------------------------------------
+ CDC Suspend Event
+ Handle the suspension of the USB connection
+ Parameters:   None
+ Return Value: None
+ *---------------------------------------------------------------------------*/
+void CDC_Suspend() {
+  usb_serial.host_connected = false;
+  usb_serial.transmit_buffer.clear();
+  CDC_DepInEmpty = 0;
+}
+
+/*----------------------------------------------------------------------------
+ CDC Resume Event
+ Handle the resumption of the USB connection
+ Parameters:   None
+ Return Value: None
+ *---------------------------------------------------------------------------*/
+void CDC_Resume() {
+  usb_serial.host_connected = (CDC_LineState & CDC_DTE_PRESENT) != 0 ? true : false;
   CDC_DepInEmpty = 1;
 }
 
@@ -209,7 +210,7 @@ uint32_t CDC_GetLineCoding(void) {
  *---------------------------------------------------------------------------*/
 uint32_t CDC_SetControlLineState(unsigned short wControlSignalBitmap) {
   CDC_LineState = wControlSignalBitmap;
-  usb_serial.host_connected = (wControlSignalBitmap & CDC_DTE_PRESENT) != 0 ? true : false;
+  usb_serial.host_connected = (CDC_LineState & CDC_DTE_PRESENT) != 0 ? true : false;
   return true;
 }
 
@@ -233,8 +234,25 @@ uint32_t CDC_SendBreak(unsigned short wDurationOfBreak) {
  Return Value: none
  *---------------------------------------------------------------------------*/
 void CDC_BulkIn(void) {
-  if (CDC_WriteBuffer() == 0)
-    CDC_DepInEmpty = 1;
+  uint32_t numBytesAvail = usb_serial.transmit_buffer.available();
+  uint32_t epStat = USB_ReadStatusEP(CDC_DEP_IN);
+
+  //_DBG("USB write "); _DBD32(numBytesAvail); _DBG(" stat "); _DBD32(epStat); _DBG("\n");
+  if (numBytesAvail > 0 && (epStat & EP_SEL_F) != 0)
+    _DBG("OFL\n");
+  if (numBytesAvail > 0 && (epStat & EP_SEL_F) == 0) {
+    numBytesAvail = numBytesAvail > (USB_CDC_BUFSIZE - 1) ? (USB_CDC_BUFSIZE - 1) : numBytesAvail;
+    for(uint32_t i = 0; i < numBytesAvail; ++i) {
+      usb_serial.transmit_buffer.read(&BulkBufIn[i]);
+    }
+    //if (numBytesAvail > 1) {
+      //_DBD32(numBytesAvail); _DBG("\n");
+    //}
+    USB_WriteEP(CDC_DEP_IN, &BulkBufIn[0], numBytesAvail);
+    epStat = USB_ReadStatusEP(CDC_DEP_IN);
+    //_DBG(" stat "); _DBD32(epStat); _DBG("\n");
+  }
+  CDC_DepInEmpty = (epStat & EP_SEL_F) == 0;
 }
 
 /*----------------------------------------------------------------------------

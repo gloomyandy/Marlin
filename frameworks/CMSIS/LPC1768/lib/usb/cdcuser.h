@@ -23,7 +23,6 @@
 extern uint32_t CDC_RdOutBuf(char *buffer, const uint32_t *length);
 extern uint32_t CDC_WrOutBuf(const char *buffer, uint32_t *length);
 extern uint32_t CDC_OutBufAvailChar(uint32_t *availChar);
-extern void CDC_FlushBuffer(void);
 
 /* CDC Data In/Out Endpoint Address */
 #define CDC_DEP_IN       0x82
@@ -52,11 +51,17 @@ extern void CDC_NotificationIn(void);
 
 /* CDC Initializtion Function */
 extern void CDC_Init();
+extern void CDC_Resume();
+extern void CDC_Suspend();
+
 
 /* CDC prepare the SERAIAL_STATE */
 extern unsigned short CDC_GetSerialState(void);
 
 /* flow control */
 extern unsigned short CDC_DepInEmpty;         // DataEndPoint IN empty
-
+__inline void CDC_FlushBuffer() {
+  if (CDC_DepInEmpty)
+    USB_SetInterruptEP(CDC_DEP_IN);
+}
 #endif  /* __CDCUSER_H__ */

@@ -55,9 +55,6 @@ extern "C" {
   void SysTick_Handler(void) {
     ++_millis;
     disk_timerproc();
-    // If there is data in the usb serial buffer start sending it
-    if (CDC_DepInEmpty && !usb_serial.transmit_buffer.empty())
-      CDC_FlushBuffer();
   }
 
   // Runs after clock init and before global static constructors

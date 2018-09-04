@@ -31,7 +31,9 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <Print.h>
-
+#include <usb/usb.h>
+#include <usb/usbhw.h>
+#include <usb/cdcuser.h>
 /**
  * Generic RingBuffer
  * T type of the buffer array
@@ -119,6 +121,7 @@ public:
     while (transmit_buffer.write(c) == 0) { // Block until there is free room in buffer
       if (!host_connected) return 0;        // Break infinite loop on host disconect
     }
+    CDC_FlushBuffer();
     return 1;
   }
 
@@ -147,8 +150,14 @@ public:
     size_t i = 0;
     if (length > 0 && length < 256) {
       while (i < (size_t)length && host_connected) {
-        i += transmit_buffer.write(buffer[i]);
+        size_t cnt = transmit_buffer.write(buffer[i]);
+        if (cnt == 0)
+          CDC_FlushBuffer();
+        else
+          i += cnt;
       }
+      if (i > 0)
+        CDC_FlushBuffer();
     }
     return i;
   }

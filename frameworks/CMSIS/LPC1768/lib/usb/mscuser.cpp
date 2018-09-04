@@ -553,11 +553,13 @@ void MSC_RequestSense (void) {
   BulkBuf[16] = 0x00;
   BulkBuf[17] = 0x00;
 
+/*
   if(sense_data.has_sense()){
     _DBG("Sent Response to SenseRequest: ");
     _DBH(static_cast<uint8_t>(sense_data.key));
     _DBG("\n");
   }
+  */
 
   BulkLen = 18;
   DataInTransfer();
