@@ -11,6 +11,7 @@ extern "C" {
 }
 
 #include <usb/usb.h>
+#include <usb/usbreg.h>
 #include <usb/usbcfg.h>
 #include <usb/usbhw.h>
 #include <usb/usbcore.h>
@@ -83,18 +84,22 @@ extern "C" {
   }
 }
 
-extern uint32_t MSC_SD_Init(uint8_t pdrv);
-
 int main(void) {
-
-  (void)MSC_SD_Init(0);
+  debug_frmwrk_init();
+  _DBG("\n\nDebug running\n");
+  // Make sure the SPI CS pins are set early, before we atempt any SPI operations
+  digitalWrite(SS_PIN, HIGH);  // For some CPUs pinMode can write the wrong data so init desired data value first
+  pinMode(SS_PIN, OUTPUT);     // Solution for #8746 by @benlye
+  digitalWrite(SD_CS, HIGH);  // For some CPUs pinMode can write the wrong data so init desired data value first
+  pinMode(SD_CS, OUTPUT);     // Solution for #8746 by @benlye
 
   USB_Init();                               // USB Initialization
   USB_Connect(TRUE);                        // USB Connect
-
+  MSC_SD_Init(0);
   const uint32_t usb_timeout = millis() + 2000;
   while (!USB_Configuration && PENDING(millis(), usb_timeout)) {
     delay(50);
+    HAL_idletask();
     #if PIN_EXISTS(LED)
       TOGGLE(LED_PIN);     // Flash quickly during USB initialization
     #endif

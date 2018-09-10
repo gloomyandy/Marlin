@@ -155,4 +155,7 @@ void HAL_adc_start_conversion(const uint8_t adc_pin);
 uint16_t HAL_adc_get_result(void);
 bool HAL_adc_finished(void);
 
+#define HAL_IDLETASK 1
+void HAL_idletask(void);
+
 #endif // _HAL_LPC1768_H_
