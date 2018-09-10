@@ -85,7 +85,7 @@ extern "C" {
 }
 
 int main(void) {
-  debug_frmwrk_init();
+  //debug_frmwrk_init();
   _DBG("\n\nDebug running\n");
   // Make sure the SPI CS pins are set early, before we atempt any SPI operations
   digitalWrite(SS_PIN, HIGH);  // For some CPUs pinMode can write the wrong data so init desired data value first
@@ -95,7 +95,11 @@ int main(void) {
 
   USB_Init();                               // USB Initialization
   USB_Connect(TRUE);                        // USB Connect
-  MSC_SD_Init(0);
+  #ifdef USB_SD_ACCESS
+    #if USB_SD_ACCESS != USB_SD_DISABLED
+      MSC_SD_Init(0);
+    #endif
+  #endif
   const uint32_t usb_timeout = millis() + 2000;
   while (!USB_Configuration && PENDING(millis(), usb_timeout)) {
     delay(50);

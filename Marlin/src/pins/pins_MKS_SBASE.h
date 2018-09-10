@@ -183,10 +183,46 @@
 #define ENET_TXD0          P1_00   // J12-11
 #define ENET_TXD1          P1_01   // J12-12
 
-#define SHARED_SD_CARD
-//#define SBASE_CUSTOM_CABLE
-// Definitions for external SD card, usually attached to the LCD
-#if ENABLED(SBASE_CUSTOM_CABLE)
+/*
+ * The SBase can share the on-board SD card with a PC via USB the following
+ * definitions control this feature:
+ * #define USB_SD_ACCESS 0 - access is disabled
+ * #define USB_SD_ACCESS 1 - access to the on board SD card is enabled
+ */
+// Note the following definitions should probably be migrated to the global config files
+#ifndef USB_SD_DISABLED
+  #define USB_SD_DISABLED 0
+#endif
+#ifndef USB_SD_ONBOARD
+  #define USB_SD_ONBOARD 1
+#endif
+
+#ifndef USB_SD_ACCESS
+  #define USB_SD_ACCESS USB_SD_ONBOARD
+#endif
+
+/*
+ * SD Card options. There are a number of options available
+ * #define SBASE_SD_CARD 1 - Uses a custom cable with SD card change detect
+ * #define SBASE_SD_CARD 2 - Uses a standard cable with access to the LCD SD card
+ * #define SBASE_SD_CARD 3 - Uses either cable with access only to the on board SD card
+ */
+// Note the following definitions should probably be migrated to the global config files
+#ifndef SBASE_SD_CUSTOM_CABLE
+  #define SBASE_SD_CUSTOM_CABLE 1
+#endif
+#ifndef SBASE_SD_LCD
+  #define SBASE_SD_LCD 2
+#endif
+#ifndef SBASE_SD_ONBOARD
+  #define SBASE_SD_ONBOARD 3
+#endif
+
+#ifndef SBASE_SD_CARD
+  #define SBASE_SD_CARD SBASE_SD_CUSTOM_CABLE
+#endif
+
+#if SBASE_SD_CARD == SBASE_SD_CUSTOM_CABLE
   /**
    * A custom cable is needed. See the README file in the
    * Marlin\src\config\examples\Mks\Sbase directory
@@ -208,7 +244,8 @@
   #define SD_CS              P0_06
   #define LPC_SOFTWARE_SPI  // With a custom cable we need software SPI because the
                             // selected pins are not on a hardware SPI controller
-#else
+#endif
+#if SBASE_SD_CARD == SBASE_SD_LCD
   // use standard cable and header, SPI and SD detect sre shared with on-board SD card
   // hardware SPI is used for both SD cards
   #define SD_DETECT_PIN      P0_27
@@ -216,16 +253,25 @@
   #define SCK_PIN            P0_07
   #define MISO_PIN           P0_08
   #define MOSI_PIN           P0_09
-  #if ENABLED(SHARED_SD_CARD)
-    #define SS_PIN             P0_06
-    #define SD_CS              P0_06
-  #else
-    #define SS_PIN             P0_28
-    #define SD_CS              P0_06
-  #endif
-  #define SDSS               SS_PIN
-
+  #define SS_PIN             P0_28
+  #define SD_CS              P0_06
 #endif
+#if SBASE_SD_CARD == SBASE_SD_ONBOARD
+  // The external SD card is not used. Hardware SPI is used to access the card.
+  #if USB_SD_ACCESS == 1
+    #define SHARED_SD_CARD
+    #undef SD_DETECT_PIN
+  #else
+    #define SD_DETECT_PIN      P0_27
+  #endif
+  #define SCK_PIN            P0_07
+  #define MISO_PIN           P0_08
+  #define MOSI_PIN           P0_09
+  #define SS_PIN             P0_06
+  #define SD_CS              P0_06
+#endif
+#define SDSS               SS_PIN
+
 
 /**
  * Example for trinamic drivers using the J8 connector on MKs Sbase.
