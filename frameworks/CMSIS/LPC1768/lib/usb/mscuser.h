@@ -31,6 +31,8 @@
 /* MSC Requests Callback Functions */
 extern uint32_t MSC_Reset     (void);
 extern uint32_t MSC_GetMaxLUN (void);
+void MSC_UnstallEP(uint32_t EPNum);
+void MSC_StallEP(uint32_t EPNum);
 
 /* MSC Bulk Callback Functions */
 extern void MSC_GetCBW (void);

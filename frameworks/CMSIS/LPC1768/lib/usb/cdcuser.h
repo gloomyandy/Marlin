@@ -53,7 +53,7 @@ extern void CDC_NotificationIn(void);
 extern void CDC_Init();
 extern void CDC_Resume();
 extern void CDC_Suspend();
-
+extern void CDC_Reset();
 
 /* CDC prepare the SERAIAL_STATE */
 extern unsigned short CDC_GetSerialState(void);

@@ -47,21 +47,20 @@ uint8_t  block_cache[MSC_BLOCK_SIZE];
 uint8_t  BulkLen;                 /* Bulk In/Out Length */
 Sense sense_data;
 
-#define CACHE_INVALID  0xffffffff
-
 #define CMD_NONE   0
 #define CMD_START  1
 #define CMD_READ   2
 #define CMD_WRITE  3
 volatile uint8_t deferred_cmd = 0;
-volatile DWORD cache_lba = CACHE_INVALID;
 volatile uint32_t missed_ops = 0;
-
+#define CACHE_INVALID  0xffffffff
+volatile DWORD cache_lba = CACHE_INVALID;
 
 MSC_CBW CBW;                   /* Command Block Wrapper */
 MSC_CSW CSW;                   /* Command Status Wrapper */
 volatile uint8_t media_lock = 0;
 volatile bool device_wants_lock = false;
+volatile bool ep_in_stalled = false;
 
 #define NO_LOCK 0
 #define HOST_LOCK 1
@@ -73,6 +72,7 @@ void MSC_RunDeferredCommands();
 
 uint32_t MSC_Aquire_Lock() {
   if (media_lock == DEVICE_LOCK) return 0;
+
   NVIC_DisableIRQ(USB_IRQn);
   device_wants_lock = true;
   uint32_t end_millis = millis() + 1000;
@@ -133,7 +133,6 @@ uint32_t MSC_SD_Lock() {
 uint32_t MSC_SD_Release(uint8_t pdrv) {
   MSC_BlockCount = 0;
   deferred_cmd = CMD_NONE;
-  _DBG("Release disk\n");
   return 0;
 }
 
@@ -141,7 +140,6 @@ uint32_t MSC_SD_Init(uint8_t pdrv) {
   DSTATUS ret = disk_initialize(pdrv);
   if(ret) return ret;
   if(disk_ioctl (pdrv, GET_SECTOR_COUNT, (void *)(&MSC_BlockCount))) return 1;
-  _DBG("Disk size "); _DBD32(MSC_BlockCount); _DBG("\n");
   return 0;
 }
 
@@ -161,10 +159,6 @@ void MSC_Start() {
 }
 
 void MSC_DeferCommand(uint8_t cmd) {
-  if (deferred_cmd != 0 && deferred_cmd != cmd){
-    _DBG("Defer cmd "); _DBD(cmd); _DBG("\n");
-    _DBG("Overwrite cmd "); _DBD(deferred_cmd); _DBG("\n");
-  }
   deferred_cmd = cmd;
 }
 
@@ -208,9 +202,33 @@ void MSC_StartStopUnit() {
 uint32_t MSC_Reset (void) {
   _DBG("MSC Reset\n");
   BulkStage = MSC_BS_CBW;
+  ep_in_stalled = false;
   return (TRUE);
 }
 
+/*
+ *  MSC Mass Storage Unstall request callback
+ *   Called when one of the msc bulk endpoints is unstalled
+ *    Parameters:      EPNum the endpoint that is being unstalled
+ *    Return Value:    None
+ */
+
+void MSC_UnstallEP(uint32_t EPNum) {
+  if ((EPNum == MSC_EP_IN) && ep_in_stalled) {
+    /* Compliance Test: rewrite CSW after unstall */
+    if (CSW.dSignature == MSC_CSW_Signature) {
+      USB_WriteEP(MSC_EP_IN, (uint8_t *) &CSW, sizeof(CSW));
+    }
+    ep_in_stalled = false;
+  }
+}
+
+void MSC_StallEP(uint32_t EPNum) {
+  USB_SetStallEP(EPNum);
+  // keep track of the stall state of the IN EP.
+  if (EPNum == MSC_EP_IN)
+    ep_in_stalled = true;
+}
 
 /*
  *  MSC Get Max LUN Request Callback
@@ -228,8 +246,13 @@ uint32_t MSC_GetMaxLUN (void) {
 bool MSC_CheckAvailable(void) {
   if (MSC_BlockCount == 0)
     sense_data.set(Sense_KEY::NOT_READY, Sense_ASC::MEDIUM_NOT_PRESENT, Sense_ASCQ::LOADABLE);
-  else if (media_lock == DEVICE_LOCK || device_wants_lock)
-    sense_data.set(Sense_KEY::NOT_READY, Sense_ASC::LOGICAL_UNIT_NOT_READY, Sense_ASCQ::DEVICE_IS_BUSY);
+  else if (media_lock == DEVICE_LOCK)
+    sense_data.set(Sense_KEY::NOT_READY, Sense_ASC::MEDIUM_NOT_PRESENT, Sense_ASCQ::REASON_UNKNOWN);
+  else if (device_wants_lock) {
+    sense_data.set(Sense_KEY::NOT_READY, Sense_ASC::MEDIUM_NOT_PRESENT, Sense_ASCQ::REASON_UNKNOWN);
+    // indicate the device can have the lock
+    media_lock = NO_LOCK;
+  }
   else
     return true;
   CSW.bStatus = CSW_CMD_FAILED;
@@ -245,37 +268,8 @@ bool host_get_lock(void) {
   return false;
 }
 
-/*
- *  MSC Memory Read Callback
- *   Called automatically on Memory Read Event
- *    Parameters:      None (global variables)
- *    Return Value:    None
- */
-void MSC_MemoryRead (void) {
-  if (deferred_cmd != CMD_NONE){
-    _DBG("Missed MemoryRead\n");
-    return;
-  }
-  //_DBG("MemoryRead\n");
-  if(!host_get_lock()) {
-     _DBG("Auto Lock Fail Permission Denied Device has Lock\n");
-     return;
-  }
-  WDT_Feed();
-
+static void MSC_CompleteRead (void) {
   uint32_t n = (length > MSC_MAX_PACKET) ? MSC_MAX_PACKET : length;
-
-  if (lba > MSC_BlockCount) {
-      _DBG("Read error\n");
-      n = (MSC_BlockCount - lba) * MSC_BLOCK_SIZE + block_offset;
-      BulkStage = MSC_BS_ERROR;
-  }
-
-  if(lba != cache_lba) {
-    MSC_DeferCommand(CMD_READ);
-    return;
-  }
-
   USB_WriteEP(MSC_EP_IN, &block_cache[block_offset], n);
 
   block_offset += n;
@@ -295,6 +289,32 @@ void MSC_MemoryRead (void) {
     CSW.bStatus = CSW_CMD_PASSED;
     sense_data.reset();
   }
+}
+
+/*
+ *  MSC Memory Read Callback
+ *   Called automatically on Memory Read Event
+ *    Parameters:      None (global variables)
+ *    Return Value:    None
+ */
+void MSC_MemoryRead (void) {
+  if (deferred_cmd != CMD_NONE){
+    return;
+  }
+  if(!host_get_lock()) {
+     return;
+  }
+  WDT_Feed();
+
+  if (lba > MSC_BlockCount) {
+    _DBG("Invalid LBA\n");
+  }
+
+  if(lba != cache_lba) {
+    MSC_DeferCommand(CMD_READ);
+    return;
+  }
+  MSC_CompleteRead();
 }
 
 
@@ -333,7 +353,6 @@ void MSC_MemoryWrite (void) {
   }
   BulkLen = (uint8_t)USB_ReadEP(MSC_EP_OUT, BulkBuf);
   if(!host_get_lock()) {
-     _DBG("Auto Lock Fail Permission Denied Device has Lock\n");
      return;
   }
   WDT_Feed();
@@ -362,7 +381,6 @@ void MSC_MemoryWrite (void) {
 void MSC_MemoryVerify (void) {
   BulkLen = (uint8_t)USB_ReadEP(MSC_EP_OUT, BulkBuf);
   if(!host_get_lock()) {
-     _DBG("Auto Lock Fail Permission Denied Device has Lock\n");
      return;
   }
   WDT_Feed();
@@ -404,13 +422,12 @@ void MSC_RunDeferredCommands() {
     case CMD_READ:
       disk_read (0, block_cache, lba, 1);
       cache_lba = lba;
-      MSC_MemoryRead();
+      MSC_CompleteRead();
       break;
     case CMD_WRITE:
       disk_write(0, block_cache, cache_lba, 1);
       MSC_CompleteWrite();
       if (missed_ops > 0) {
-        //_DBG("missed ops "); _DBD32(missed_ops); _DBG("\n");
         MSC_MemoryWrite();
         missed_ops = 0;
       }
@@ -440,16 +457,12 @@ uint32_t MSC_RWSetup (void) {
 
   block_offset = 0;
   length = transfer_count * MSC_BLOCK_SIZE;
-  //_DBG("R/W "); _DBD32(lba); _DBG(" "); _DBD32(length); _DBG("\n");
+
   if (CBW.dDataLength != (transfer_count * MSC_BLOCK_SIZE)) {
-    USB_SetStallEP(MSC_EP_IN);
-    USB_SetStallEP(MSC_EP_OUT);
     CSW.bStatus = CSW_PHASE_ERROR;
     MSC_SetCSW();
     return (FALSE);
   }
-  if (missed_ops != 0)
-    _DBG("Error op outstanding\n");
   return (TRUE);
 }
 
@@ -468,7 +481,6 @@ uint32_t DataInFormat (void) {
     return (FALSE);
   }
   if ((CBW.bmFlags & 0x80) == 0) {
-    USB_SetStallEP(MSC_EP_OUT);
     CSW.bStatus = CSW_PHASE_ERROR;
     MSC_SetCSW();
     return (FALSE);
@@ -504,13 +516,6 @@ void DataInTransfer (void) {
 
 void MSC_TestUnitReady (void) {
 
-  if (CBW.dDataLength != 0) {
-    if ((CBW.bmFlags & 0x80) != 0) {
-      USB_SetStallEP(MSC_EP_IN);
-    } else {
-      USB_SetStallEP(MSC_EP_OUT);
-    }
-  }
   if (MSC_CheckAvailable()) {
     sense_data.reset();
     CSW.bStatus = CSW_CMD_PASSED;
@@ -528,10 +533,6 @@ void MSC_TestUnitReady (void) {
 void MSC_RequestSense (void) {
 
   if (!DataInFormat()) return;
-
-  if(media_lock == DEVICE_LOCK || device_wants_lock) {
-    sense_data.set(Sense_KEY::NOT_READY, Sense_ASC::MEDIUM_NOT_PRESENT, Sense_ASCQ::REASON_UNKNOWN);
-  }
 
   BulkBuf[ 0] = 0x70;          /* Response Code */
   BulkBuf[ 1] = 0x00;
@@ -553,13 +554,6 @@ void MSC_RequestSense (void) {
   BulkBuf[16] = 0x00;
   BulkBuf[17] = 0x00;
 
-/*
-  if(sense_data.has_sense()){
-    _DBG("Sent Response to SenseRequest: ");
-    _DBH(static_cast<uint8_t>(sense_data.key));
-    _DBG("\n");
-  }
-  */
 
   BulkLen = 18;
   DataInTransfer();
@@ -636,8 +630,12 @@ void MSC_ModeSense6 (void) {
   BulkBuf[ 1] = 0x00;
   BulkBuf[ 2] = 0x00;
   BulkBuf[ 3] = 0x00;
+  BulkBuf[ 4] = 0x00;
+  BulkBuf[ 5] = 0x00;
+  BulkBuf[ 6] = 0x00;
+  BulkBuf[ 7] = 0x00;
 
-  BulkLen = 4;
+  BulkLen = 8;
   DataInTransfer();
 }
 
@@ -673,7 +671,6 @@ void MSC_ModeSense10 (void) {
  */
 
 void MSC_ReadCapacity (void) {
-
   if (!DataInFormat()) return;
   if (!MSC_CheckAvailable()) return;
   /* Last Logical Block */
@@ -794,7 +791,6 @@ fail: CSW.bStatus = CSW_CMD_FAILED;
               BulkStage = MSC_BS_DATA_IN;
               MSC_MemoryRead();
             } else {
-              USB_SetStallEP(MSC_EP_OUT);
               CSW.bStatus = CSW_PHASE_ERROR;
               MSC_SetCSW();
             }
@@ -805,7 +801,6 @@ fail: CSW.bStatus = CSW_CMD_FAILED;
             if ((CBW.bmFlags & 0x80) == 0) {
               BulkStage = MSC_BS_DATA_OUT;
             } else {
-              USB_SetStallEP(MSC_EP_IN);
               CSW.bStatus = CSW_PHASE_ERROR;
               MSC_SetCSW();
             }
@@ -817,7 +812,6 @@ fail: CSW.bStatus = CSW_CMD_FAILED;
               BulkStage = MSC_BS_DATA_OUT;
               MemOK = TRUE;
             } else {
-              USB_SetStallEP(MSC_EP_IN);
               CSW.bStatus = CSW_PHASE_ERROR;
               MSC_SetCSW();
             }
@@ -843,8 +837,8 @@ fail: CSW.bStatus = CSW_CMD_FAILED;
     }
   } else {
     /* Invalid CBW */
-    USB_SetStallEP(MSC_EP_IN);
-    USB_SetStallEP(MSC_EP_OUT);
+    MSC_StallEP(MSC_EP_IN);
+    MSC_StallEP(MSC_EP_OUT);
     BulkStage = MSC_BS_ERROR;
   }
 }
@@ -857,8 +851,22 @@ fail: CSW.bStatus = CSW_CMD_FAILED;
  */
 
 void MSC_SetCSW (void) {
+  uint32_t sep;
   BulkStage = MSC_BS_CSW;
   CSW.dSignature = MSC_CSW_Signature;
+  // Stall endpoint if required see: http://www.usb.org/developers/docs/devclass_docs/usbmassbulk_10.pdf
+  if (CSW.dDataResidue != 0) {
+    if ((CBW.bmFlags & 0x80) == 0) {
+      MSC_StallEP(MSC_EP_OUT);
+    }
+    else {
+      MSC_StallEP(MSC_EP_IN);
+    }
+  }
+  if (CSW.bStatus == CSW_PHASE_ERROR) {
+    MSC_StallEP(MSC_EP_IN);
+  }
+
   USB_WriteEP(MSC_EP_IN, (uint8_t *)&CSW, sizeof(CSW));
 }
 
@@ -882,7 +890,7 @@ void MSC_BulkIn (void) {
       MSC_SetCSW();
       break;
     case MSC_BS_DATA_IN_LAST_STALL:
-      USB_SetStallEP(MSC_EP_IN);
+      MSC_StallEP(MSC_EP_IN);
       MSC_SetCSW();
       break;
     case MSC_BS_CSW:
@@ -926,7 +934,7 @@ void MSC_BulkOut (void) {
       _DBG("BO Phase error ");_DBD32(BulkStage); _DBG("\n");
       BulkLen = (uint8_t)USB_ReadEP(MSC_EP_OUT, BulkBuf);
       _DBG("Data len "); _DBD32(BulkLen); _DBG("\n");
-      USB_SetStallEP(MSC_EP_OUT);
+      MSC_StallEP(MSC_EP_OUT);
       CSW.bStatus = CSW_PHASE_ERROR;
       MSC_SetCSW();
       break;

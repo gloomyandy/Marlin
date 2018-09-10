@@ -283,6 +283,12 @@ void HAL_pwm_init(void) {
 // HAL idle task
 void HAL_idletask(void) {
   #if ENABLED(SHARED_SD_CARD)
+    // If Marlin is using the SD card we need to lock it to prevent access from
+    // a PC via USB.
+    // It would be better to use card.cardOK here, but at the moment there is
+    // no way to release the SD card from the LCD menu system. So for now we use
+    // SD card activity to set/release the lock
+    //if (card.cardOK)
     if (IS_SD_PRINTING || IS_SD_FILE_OPEN)
       MSC_Aquire_Lock();
     else

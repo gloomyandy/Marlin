@@ -109,6 +109,19 @@ void CDC_Resume() {
 }
 
 /*----------------------------------------------------------------------------
+ CDC Reset Event
+ Handle the reset of the USB connection
+ Parameters:   None
+ Return Value: None
+ *---------------------------------------------------------------------------*/
+void CDC_Reset() {
+  // USB reset, any packets in transit may have been flushed
+  usb_serial.host_connected = (CDC_LineState & CDC_DTE_PRESENT) != 0 ? true : false;
+  CDC_DepInEmpty = 1;
+  CDC_FlushBuffer();
+}
+
+/*----------------------------------------------------------------------------
  CDC SendEncapsulatedCommand Request Callback
  Called automatically on CDC SEND_ENCAPSULATED_COMMAND Request
  Parameters:   None                          (global SetupPacket and EP0Buf)
@@ -237,20 +250,13 @@ void CDC_BulkIn(void) {
   uint32_t numBytesAvail = usb_serial.transmit_buffer.available();
   uint32_t epStat = USB_ReadStatusEP(CDC_DEP_IN);
 
-  //_DBG("USB write "); _DBD32(numBytesAvail); _DBG(" stat "); _DBD32(epStat); _DBG("\n");
-  if (numBytesAvail > 0 && (epStat & EP_SEL_F) != 0)
-    _DBG("OFL\n");
   if (numBytesAvail > 0 && (epStat & EP_SEL_F) == 0) {
     numBytesAvail = numBytesAvail > (USB_CDC_BUFSIZE - 1) ? (USB_CDC_BUFSIZE - 1) : numBytesAvail;
     for(uint32_t i = 0; i < numBytesAvail; ++i) {
       usb_serial.transmit_buffer.read(&BulkBufIn[i]);
     }
-    //if (numBytesAvail > 1) {
-      //_DBD32(numBytesAvail); _DBG("\n");
-    //}
     USB_WriteEP(CDC_DEP_IN, &BulkBufIn[0], numBytesAvail);
     epStat = USB_ReadStatusEP(CDC_DEP_IN);
-    //_DBG(" stat "); _DBD32(epStat); _DBG("\n");
   }
   CDC_DepInEmpty = (epStat & EP_SEL_F) == 0;
 }

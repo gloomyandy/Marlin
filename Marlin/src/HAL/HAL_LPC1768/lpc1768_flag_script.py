@@ -13,6 +13,8 @@ if __name__ == "__main__":
                     "-fno-move-loop-invariants",
                     "-fno-strict-aliasing",
                     "-fsingle-precision-constant",
+                    "-funwind-tables",
+                    "-mpoke-function-name",
 
                     "--specs=nano.specs",
                     "--specs=nosys.specs",

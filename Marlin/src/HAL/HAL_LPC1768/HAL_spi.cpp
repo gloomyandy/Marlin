@@ -143,8 +143,6 @@
     #define LPC_SSPn LPC_SSP1
   #endif
 
-
-
   void spiBegin() {  // setup SCK, MOSI & MISO pins for SSP0
     PINSEL_CFG_Type PinCfg;  // data structure to hold init values
     PinCfg.Funcnum = 2;
@@ -166,6 +164,8 @@
     SET_OUTPUT(MOSI_PIN);
     // divide PCLK by 2 for SSP0
     CLKPWR_SetPCLKDiv(LPC_HW_SPI_DEV == 0 ? CLKPWR_PCLKSEL_SSP0 : CLKPWR_PCLKSEL_SSP1, CLKPWR_PCLKSEL_CCLK_DIV_2);
+    spiInit(0);
+    SSP_Cmd(LPC_SSPn, ENABLE);  // start SSP running
   }
 
   void spiInit(uint8_t spiRate) {
@@ -182,9 +182,8 @@
     SSP_CFG_Type HW_SPI_init; // data structure to hold init values
     SSP_ConfigStructInit(&HW_SPI_init);  // set values for SPI mode
     HW_SPI_init.ClockRate = Marlin_speed[MIN(spiRate, 6)]; // put in the specified bit rate
+    HW_SPI_init.Mode |= SSP_CR1_SSP_EN;
     SSP_Init(LPC_SSPn, &HW_SPI_init);  // puts the values into the proper bits in the SSP0 registers
-
-    SSP_Cmd(LPC_SSPn, ENABLE);  // start SSP0 running
   }
 
 
@@ -236,6 +235,13 @@
 
   // Write from buffer to SPI
   void spiSendBlock(uint8_t token, const uint8_t* buf) {
+    uint8_t response;
+    response = spiTransfer(token);
+
+    for (uint16_t i = 0; i < 512; i++) {
+      response = spiTransfer(buf[i]);
+    }
+    UNUSED(response);
   }
 
   /** Begin SPI transaction, set clock, bit order, data mode */

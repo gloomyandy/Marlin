@@ -33,6 +33,7 @@
 #include <Print.h>
 #include <usb/usb.h>
 #include <usb/usbhw.h>
+#include <usb/usbreg.h>
 #include <usb/cdcuser.h>
 /**
  * Generic RingBuffer
@@ -120,6 +121,7 @@ public:
     if (!host_connected) return 0;          // Do not fill buffer when host disconnected
     while (transmit_buffer.write(c) == 0) { // Block until there is free room in buffer
       if (!host_connected) return 0;        // Break infinite loop on host disconect
+      CDC_FlushBuffer();
     }
     CDC_FlushBuffer();
     return 1;
