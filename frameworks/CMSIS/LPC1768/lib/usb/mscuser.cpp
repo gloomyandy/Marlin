@@ -225,7 +225,7 @@ void MSC_UnstallEP(uint32_t EPNum) {
 
 void MSC_StallEP(uint32_t EPNum) {
   USB_SetStallEP(EPNum);
-  // keep track of the stall stae of the IN EP.
+  // keep track of the stall state of the IN EP.
   if (EPNum == MSC_EP_IN)
     ep_in_stalled = true;
 }
