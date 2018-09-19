@@ -183,40 +183,34 @@
 #define ENET_TXD0          P1_00   // J12-11
 #define ENET_TXD1          P1_01   // J12-12
 
-// Note the following definitions should probably be migrated to the global config files
-#define USB_SD_DISABLED 0
-#define USB_SD_ONBOARD 1
+
 /*
  * The SBase can share the on-board SD card with a PC via USB the following
  * definitions control this feature:
  */
-//#define USB_SD_ACCESS USB_SD_DISABLED  // Disable USB file access to the SD card
-#define USB_SD_ACCESS USB_SD_ONBOARD
+//#define USB_SD_DISABLED
+#define USB_SD_ONBOARD
 
-
-#ifndef USB_SD_ACCESS
-  #define USB_SD_ACCESS USB_SD_ONBOARD
+#if !defined(USB_SD_DISABLED) && !defined(USB_SD_ONBOARD)
+  #define USB_SD_ONBOARD
 #endif
 
-// Note the following definitions should probably be migrated to the global config files
-#define SBASE_SD_CUSTOM_CABLE 1
-#define SBASE_SD_LCD 2
-#define SBASE_SD_ONBOARD 3
 /*
  * There are a number of configurations available for the SBase SD card reader.
  * A custom cable can be used to allow access to the LCD based SD card.
  * A standard cable can be used for access to the LCD SD card (but no SD detect).
  * The onboard SD card can be used and optionally shared with a PC via USB.
  */
-//#define SBASE_SD_CARD SBASE_SD_CUSTOM_CABLE  // Use a custom cable to access the SD
-//#define SBASE_SD_CARD SBASE_SD_LCD           // Use the SD drive attached to the LCD
-#define SBASE_SD_CARD SBASE_SD_ONBOARD       // Use the SD drive on the control board
 
-#ifndef SBASE_SD_CARD
-  #define SBASE_SD_CARD SBASE_SD_CUSTOM_CABLE
+//#define SBASE_SD_CUSTOM_CABLE // Use a custom cable to access the SD
+//#define SBASE_SD_LCD          // Use the SD drive attached to the LCD
+#define SBASE_SD_ONBOARD      // Use the SD drive on the control board
+
+#if !defined(SBASE_SD_CUSTOM_CABLE) && !defined(SBASE_SD_LCD) && !defined(SBASE_SD_ONBOARD)
+  #define SBASE_SD_ONBOARD
 #endif
 
-#if SBASE_SD_CARD == SBASE_SD_CUSTOM_CABLE
+#ifdef SBASE_SD_CUSTOM_CABLE
   /**
    * A custom cable is needed. See the README file in the
    * Marlin\src\config\examples\Mks\Sbase directory
@@ -238,7 +232,8 @@
   #define LPC_SOFTWARE_SPI  // With a custom cable we need software SPI because the
                             // selected pins are not on a hardware SPI controller
 #endif
-#if SBASE_SD_CARD == SBASE_SD_LCD
+
+#ifdef SBASE_SD_LCD
   // use standard cable and header, SPI and SD detect sre shared with on-board SD card
   // hardware SPI is used for both SD cards. The detect pin is shred between the
   // LCD and onboard SD readers so we disable it.
@@ -250,9 +245,10 @@
   #define SS_PIN             P0_28   // Chip select for SD card used by Marlin
   #define ONBOARD_SD_CS      P0_06   // Chip select for "System" SD card
 #endif
-#if SBASE_SD_CARD == SBASE_SD_ONBOARD
+
+#ifdef SBASE_SD_ONBOARD
   // The external SD card is not used. Hardware SPI is used to access the card.
-  #if USB_SD_ACCESS == USB_SD_ONBOARD
+  #ifdef USB_SD_ONBOARD
     // When sharing the SD card with a PC we want the menu options to
     // mount/unmount the card and refresh it. So we disable card detect.
     #define SHARED_SD_CARD
@@ -265,9 +261,6 @@
   #define MOSI_PIN           P0_09
   #define SS_PIN             P0_06   // Chip select for SD card used by Marlin
   #define ONBOARD_SD_CS      P0_06   // Chip select for "System" SD card
-#endif
-#ifdef SS_PIN
-  #define SDSS               SS_PIN
 #endif
 
 /**

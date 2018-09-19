@@ -9,12 +9,13 @@
 #include <usb/cdcuser.h>
 #include <usb/mscuser.h>
 #include <CDCSerial.h>
-#include "../../sd/cardreader.h"
 #include <usb/mscuser.h>
 
 extern "C" {
   #include <debug_frmwrk.h>
 }
+
+#include "../../sd/cardreader.h"
 #include "../../inc/MarlinConfig.h"
 #include "HAL.h"
 #include "HAL_timers.h"
@@ -58,11 +59,11 @@ void HAL_init() {
     pinMode(ONBOARD_SD_CS, OUTPUT);
   #endif
   USB_Init();                               // USB Initialization
+  USB_Connect(FALSE);                       // USB clear connection
+  delay(1000);                              // give OS time to notice
   USB_Connect(TRUE);                        // USB Connect
-  #ifdef USB_SD_ACCESS
-    #if USB_SD_ACCESS != USB_SD_DISABLED
-      MSC_SD_Init(0);                       // Enable USB SD card access
-    #endif
+  #ifndef USB_SD_DISABLED
+    MSC_SD_Init(0);                       // Enable USB SD card access
   #endif
   const uint32_t usb_timeout = millis() + 2000;
   while (!USB_Configuration && PENDING(millis(), usb_timeout)) {
@@ -88,7 +89,7 @@ void HAL_init() {
 
 // HAL idle task
 void HAL_idletask(void) {
-  #if ENABLED(SHARED_SD_CARD)
+  #if ENABLED(SDSUPPORT) && defined(SHARED_SD_CARD)
     // If Marlin is using the SD card we need to lock it to prevent access from
     // a PC via USB.
     // Other HALs use IS_SD_PRINTING and IS_SD_FILE_OPEN to check for access but
