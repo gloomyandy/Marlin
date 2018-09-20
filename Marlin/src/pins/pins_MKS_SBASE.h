@@ -191,10 +191,6 @@
 //#define USB_SD_DISABLED
 #define USB_SD_ONBOARD
 
-#if !defined(USB_SD_DISABLED) && !defined(USB_SD_ONBOARD)
-  #define USB_SD_ONBOARD
-#endif
-
 /*
  * There are a number of configurations available for the SBase SD card reader.
  * A custom cable can be used to allow access to the LCD based SD card.
@@ -204,11 +200,7 @@
 
 //#define SBASE_SD_CUSTOM_CABLE // Use a custom cable to access the SD
 //#define SBASE_SD_LCD          // Use the SD drive attached to the LCD
-#define SBASE_SD_ONBOARD      // Use the SD drive on the control board
-
-#if !defined(SBASE_SD_CUSTOM_CABLE) && !defined(SBASE_SD_LCD) && !defined(SBASE_SD_ONBOARD)
-  #define SBASE_SD_ONBOARD
-#endif
+#define SBASE_SD_ONBOARD        // Use the SD drive on the control board
 
 #ifdef SBASE_SD_CUSTOM_CABLE
   /**
