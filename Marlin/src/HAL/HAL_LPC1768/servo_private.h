@@ -53,6 +53,7 @@
 #include <LPC1768_Servo.h>
 
 class MarlinServo: public Servo  {
+  public:
   void move(const int value) {
     constexpr uint16_t servo_delay[] = SERVO_DELAY;
     static_assert(COUNT(servo_delay) == NUM_SERVOS, "SERVO_DELAY must be an array NUM_SERVOS long.");
@@ -68,7 +69,7 @@ class MarlinServo: public Servo  {
       #endif
     }
   }
-}
+};
 
 #define HAL_SERVO_LIB MarlinServo
 
