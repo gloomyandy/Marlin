@@ -445,10 +445,14 @@
 
   // If you are using a pre-configured hotend then you can use one of the value sets by uncommenting it
 
+  // Hictop 3dp-17 24V Titan Areo Target 240 fan off
+  #define DEFAULT_Kp 17.88
+  #define DEFAULT_Ki 1.08
+  #define DEFAULT_Kd 73.72
   // Hictop 3dp-17 24V Titan Areo Target 200 fan on
-  #define DEFAULT_Kp 26.80
-  #define DEFAULT_Ki 2.02
-  #define DEFAULT_Kd 88.92
+  //#define DEFAULT_Kp 26.80
+  //#define DEFAULT_Ki 2.02
+  //#define DEFAULT_Kd 88.92
   // Ultimaker
   //#define DEFAULT_Kp 22.2
   //#define DEFAULT_Ki 1.08
@@ -863,7 +867,7 @@
  */
 #define X_PROBE_OFFSET_FROM_EXTRUDER -2  // X offset: -left  +right  [of the nozzle]
 #define Y_PROBE_OFFSET_FROM_EXTRUDER 17  // Y offset: -front +behind [the nozzle]
-#define Z_PROBE_OFFSET_FROM_EXTRUDER -1.65   // Z offset: -below +above  [the nozzle]
+#define Z_PROBE_OFFSET_FROM_EXTRUDER -1.60   // Z offset: -below +above  [the nozzle]
 
 // Certain types of probes need to stay away from edges
 #define MIN_PROBE_EDGE 15
