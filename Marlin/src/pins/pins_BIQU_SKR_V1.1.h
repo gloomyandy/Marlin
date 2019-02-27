@@ -190,6 +190,17 @@
   // If pin 2_06 is unused, it can be used for the clock to avoid the LCD noise.
   //#define TMC_SW_SCK        P2_06
 
+  #define X_SERIAL_TX_PIN    P2_06
+  #define X_SERIAL_RX_PIN    P2_06
+  #define Y_SERIAL_TX_PIN    P1_31
+  #define Y_SERIAL_RX_PIN    P1_31
+  #define Z_SERIAL_TX_PIN    P1_23
+  #define Z_SERIAL_RX_PIN    P1_23
+  #define E0_SERIAL_TX_PIN   P0_03
+  #define E0_SERIAL_RX_PIN   P0_03
+  //#define E1_SERIAL_TX_PIN   P0_02
+  //#define E1_SERIAL_RX_PIN   P0_02
+
   #if ENABLED(SOFTWARE_DRIVER_ENABLE)
 
     // Software enable allows the enable pins to be repurposed as chip-select pins.
