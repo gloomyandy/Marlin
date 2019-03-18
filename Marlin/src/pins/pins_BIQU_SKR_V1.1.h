@@ -200,6 +200,8 @@
   #define E0_SERIAL_RX_PIN   P0_03
   //#define E1_SERIAL_TX_PIN   P0_02
   //#define E1_SERIAL_RX_PIN   P0_02
+  #define Z2_SERIAL_TX_PIN   P0_02
+  #define Z2_SERIAL_RX_PIN   P0_02
 
   #if ENABLED(SOFTWARE_DRIVER_ENABLE)
 
