@@ -175,20 +175,6 @@
   #define WATCH_BED_TEMP_INCREASE 2               // Degrees Celsius
 #endif
 
-/**
- * Thermal Protection parameters for the heated chamber.
- */
-#if ENABLED(THERMAL_PROTECTION_CHAMBER)
-  #define THERMAL_PROTECTION_CHAMBER_PERIOD 20    // Seconds
-  #define THERMAL_PROTECTION_CHAMBER_HYSTERESIS 2 // Degrees Celsius
-
-  /**
-   * Heated chamber watch settings (M141/M191).
-   */
-  #define WATCH_CHAMBER_TEMP_PERIOD 60            // Seconds
-  #define WATCH_CHAMBER_TEMP_INCREASE 2           // Degrees Celsius
-#endif
-
 #if ENABLED(PIDTEMP)
   // Add an experimental additional term to the heater power, proportional to the extrusion speed.
   // A well-chosen Kc value should add just enough power to melt the increased material volume.
@@ -1062,7 +1048,7 @@
   #endif
 
   // Add an optimized binary file transfer mode, initiated with 'M28 B1'
-  //#define BINARY_FILE_TRANSFER
+  //#define FAST_FILE_TRANSFER
 
   #if HAS_SDCARD_CONNECTION
     /**
@@ -1241,7 +1227,6 @@
  */
 //#define BABYSTEPPING
 #if ENABLED(BABYSTEPPING)
-  //#define BABYSTEP_WITHOUT_HOMING
   //#define BABYSTEP_XY                     // Also enable X/Y Babystepping. Not supported on DELTA!
   #define BABYSTEP_INVERT_Z false           // Change if Z babysteps should go the other way
   #define BABYSTEP_MULTIPLICATOR  1         // Babysteps are very small. Increase for faster motion.
@@ -1336,17 +1321,11 @@
 // Support for G5 with XYZE destination and IJPQ offsets. Requires ~2666 bytes.
 //#define BEZIER_CURVE_SUPPORT
 
-/**
- * G38 Probe Target
- *
- * This option adds G38.2 and G38.3 (probe towards target)
- * and optionally G38.4 and G38.5 (probe away from target).
- * Set MULTIPLE_PROBING for G38 to probe more than once.
- */
+// G38.2 and G38.3 Probe Target
+// Set MULTIPLE_PROBING if you want G38 to double touch
 //#define G38_PROBE_TARGET
 #if ENABLED(G38_PROBE_TARGET)
-  //#define G38_PROBE_AWAY        // Include G38.4 and G38.5 to probe away from target
-  #define G38_MINIMUM_MOVE 0.0275 // (mm) Minimum distance that will produce a move.
+  #define G38_MINIMUM_MOVE 0.0275 // minimum distance in mm that will produce a move (determined using the print statement in check_move)
 #endif
 
 // Moves (or segments) with fewer steps than this will be joined with the next move
@@ -1888,9 +1867,9 @@
    * M906 - Set or get motor current in milliamps using axis codes X, Y, Z, E. Report values if no axis codes given.
    * M911 - Report stepper driver overtemperature pre-warn condition.
    * M912 - Clear stepper driver overtemperature pre-warn condition flag.
-   * M122 - Report driver parameters (Requires TMC_DEBUG)
+   * M122 S0/1 - Report driver parameters (Requires TMC_DEBUG)
    */
-  //#define MONITOR_DRIVER_STATUS
+  #define MONITOR_DRIVER_STATUS
 
   #if ENABLED(MONITOR_DRIVER_STATUS)
     #define CURRENT_STEP_DOWN     50  // [mA]
@@ -1971,7 +1950,7 @@
    * Enable M122 debugging command for TMC stepper drivers.
    * M122 S0/1 will enable continous reporting.
    */
-  //#define TMC_DEBUG
+  #define TMC_DEBUG
 
   /**
    * You can set your own advanced settings by filling in predefined functions.
@@ -2172,30 +2151,12 @@
 // @section extras
 
 /**
- * Photo G-code
- * Add the M240 G-code to take a photo.
- * The photo can be triggered by a digital pin or a physical movement.
+ * Canon Hack Development Kit
+ * http://captain-slow.dk/2014/03/09/3d-printing-timelapses/
  */
-//#define PHOTO_GCODE
-#if ENABLED(PHOTO_GCODE)
-  // A position to move to (and raise Z) before taking the photo
-  //#define PHOTO_POSITION { X_MAX_POS - 5, Y_MAX_POS, 0 }  // { xpos, ypos, zraise } (M240 X Y Z)
-  //#define PHOTO_DELAY_MS   100                            // (ms) Duration to pause before moving back (M240 P)
-  //#define PHOTO_RETRACT_MM   6.5                          // (mm) E retract/recover for the photo move (M240 R S)
-
-  // Canon RC-1 or homebrew digital camera trigger
-  // Data from: http://www.doc-diy.net/photo/rc-1_hacked/
-  //#define PHOTOGRAPH_PIN 23
-
-  // Canon Hack Development Kit
-  // http://captain-slow.dk/2014/03/09/3d-printing-timelapses/
-  //#define CHDK_PIN        4
-
-  // Optional second move with delay to trigger the camera shutter
-  //#define PHOTO_SWITCH_POSITION { X_MAX_POS, Y_MAX_POS }  // { xpos, ypos } (M240 I J)
-
-  // Duration to hold the switch or keep CHDK_PIN high
-  //#define PHOTO_SWITCH_MS   50 // (ms) (M240 D)
+//#define CHDK_PIN    4   // Set and enable a pin for triggering CHDK to take a picture
+#if PIN_EXISTS(CHDK)
+  #define CHDK_DELAY 50   // (ms) How long the pin should remain HIGH
 #endif
 
 /**
