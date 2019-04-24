@@ -708,7 +708,8 @@
  * Override with M92
  *                                      X, Y, Z, E0 [, E1[, E2[, E3[, E4[, E5]]]]]
  */
- #define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 209.25 }
+ //#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 209.25 }
+ #define DEFAULT_AXIS_STEPS_PER_UNIT   { 160, 160, 400, 209.25 }
  //#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 400, 837.0 }
  //#define DEFAULT_AXIS_STEPS_PER_UNIT   { 80, 80, 800, 1674.0 }
  //#define DEFAULT_AXIS_STEPS_PER_UNIT   { 160, 160, 800, 1674.0 }
@@ -889,13 +890,13 @@
  */
 #define X_PROBE_OFFSET_FROM_EXTRUDER -2  // X offset: -left  +right  [of the nozzle]
 #define Y_PROBE_OFFSET_FROM_EXTRUDER 17  // Y offset: -front +behind [the nozzle]
-#define Z_PROBE_OFFSET_FROM_EXTRUDER -1.48   // Z offset: -below +above  [the nozzle]
+#define Z_PROBE_OFFSET_FROM_EXTRUDER -1.50   // Z offset: -below +above  [the nozzle]
 
 // Certain types of probes need to stay away from edges
 #define MIN_PROBE_EDGE 15
 
 // X and Y axis travel speed (mm/m) between probes
-#define XY_PROBE_SPEED 8000
+#define XY_PROBE_SPEED 100*60
 
 // Feedrate (mm/m) for the first approach when double-probing (MULTIPLE_PROBING == 2)
 #define Z_PROBE_SPEED_FAST HOMING_FEEDRATE_Z
