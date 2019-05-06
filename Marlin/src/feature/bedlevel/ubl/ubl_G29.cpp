@@ -1339,9 +1339,9 @@
                  y1 = y + ydir, y2 = y1 + ydir;
     // A NAN next to a pair of real values?
     if (isnan(z_values[x][y]) && !isnan(z_values[x1][y1]) && !isnan(z_values[x2][y2])) {
-      if (z_values[x1][y1] < z_values[x2][y2])                  // Angled downward?
-        z_values[x][y] = z_values[x1][y1];                      // Use nearest (maybe a little too high.)
-      else
+      //if (z_values[x1][y1] < z_values[x2][y2])                  // Angled downward?
+        //z_values[x][y] = z_values[x1][y1];                      // Use nearest (maybe a little too high.)
+      //else
         z_values[x][y] = 2.0f * z_values[x1][y1] - z_values[x2][y2];   // Angled upward...
 
       #if ENABLED(EXTENSIBLE_UI)
