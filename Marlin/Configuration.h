@@ -514,7 +514,7 @@
  * heater. If your configuration is significantly different than this and you don't understand
  * the issues involved, don't use bed PID until someone else verifies that your hardware works.
  */
-//#define PIDTEMPBED
+#define PIDTEMPBED
 
 //#define BED_LIMIT_SWITCHING
 
@@ -529,12 +529,16 @@
 #if ENABLED(PIDTEMPBED)
   //#define MIN_BED_POWER 0
   //#define PID_BED_DEBUG // Sends debug data to the serial port.
+  // Hictop 24V
+  #define DEFAULT_bedKp 233.59
+  #define DEFAULT_bedKi 17.26
+  #define DEFAULT_bedKd 790.31
 
   //120V 250W silicone heater into 4mm borosilicate (MendelMax 1.5+)
   //from FOPDT model - kp=.39 Tp=405 Tdead=66, Tc set to 79.2, aggressive factor of .15 (vs .1, 1, 10)
-  #define DEFAULT_bedKp 10.00
-  #define DEFAULT_bedKi .023
-  #define DEFAULT_bedKd 305.4
+  //#define DEFAULT_bedKp 10.00
+  //#define DEFAULT_bedKi .023
+  //#define DEFAULT_bedKd 305.4
 
   //120V 250W silicone heater into 4mm borosilicate (MendelMax 1.5+)
   //from pidautotune
@@ -1961,7 +1965,7 @@
 //#define FYSETC_MINI_12864_X_X  // Type C/D/E/F. No tunable RGB Backlight by default
 //#define FYSETC_MINI_12864_1_2  // Type C/D/E/F. Simple RGB Backlight (always on)
 //#define FYSETC_MINI_12864_2_0  // Type A/B. Discreet RGB Backlight
-#define FYSETC_MINI_12864_2_1  // Type A/B. Neopixel RGB Backlight
+//#define FYSETC_MINI_12864_2_1  // Type A/B. Neopixel RGB Backlight
 
 //
 // Factory display for Creality CR-10
