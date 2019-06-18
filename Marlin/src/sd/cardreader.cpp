@@ -791,6 +791,10 @@ void CardReader::setroot() {
    *  - Most RAM: Buffer the directory and return filenames from RAM
    */
   void CardReader::presort() {
+    // Large sorts can cause the watchdog to timeout, so reinit it here
+    #if ENABLED(USE_WATCHDOG)
+      watchdog_reset();
+    #endif
 
     // Throw away old sort index
     flush_presort();
