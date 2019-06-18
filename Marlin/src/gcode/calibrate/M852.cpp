@@ -95,8 +95,10 @@ void GcodeSuite::M852() {
     SERIAL_ECHO_START();
     SERIAL_ECHOLNPAIR_F(MSG_SKEW_FACTOR " XY: ", planner.skew_factor.xy, 6);
     #if ENABLED(SKEW_CORRECTION_FOR_Z)
-      SERIAL_ECHOPAIR(" XZ: ", planner.skew_factor.xz);
-      SERIAL_ECHOLNPAIR(" YZ: ", planner.skew_factor.yz);
+      SERIAL_ECHOLNPAIR_F(" XZ: ", planner.skew_factor.xz, 6);
+      SERIAL_ECHOLNPAIR_F(" YZ: ", planner.skew_factor.yz, 6);
+      //SERIAL_ECHOPAIR(" XZ: ", planner.skew_factor.xz);
+      //SERIAL_ECHOLNPAIR(" YZ: ", planner.skew_factor.yz);
     #else
       SERIAL_EOL();
     #endif
